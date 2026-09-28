@@ -1,12 +1,10 @@
 <div align="center">
 
-# نَمَط · Namat
+# Namat · نَمَط
 
-**محرك قوالب Microsoft Word أصيل بلغة Go**<br>
 **A native Go template engine for Microsoft Word**
 
-حوّل ملفات DOCX وDOCM المصممة في Word إلى تقارير غنية بالبيانات، دون JavaScript أو Node.js أو برامج مساعدة.<br>
-Turn Word-authored DOCX and DOCM files into data-driven reports—without JavaScript, Node.js, or helper processes.
+Author reports in Word. Render them with Go. Ship one native application.
 
 [![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/nawafinity/go-namat.svg)](https://pkg.go.dev/github.com/nawafinity/go-namat)
@@ -14,64 +12,57 @@ Turn Word-authored DOCX and DOCM files into data-driven reports—without JavaSc
 [![Coverage](https://img.shields.io/badge/statement%20coverage-100%25-brightgreen)](docs/TESTING.md)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 
-[لماذا نَمَط؟](#why-namat) · [البداية السريعة](#quick-start) · [لغة القالب](#template-language) · [التوثيق](#documentation) · [English](#english-overview)
+**English** · [العربية](README_AR.md)
+
+[Why Namat?](#why-namat) · [Quick start](#quick-start) · [Template language](#template-language) · [Documentation](#documentation)
 
 </div>
 
+Namat turns DOCX and DOCM templates into data-driven reports while preserving
+the document structure created in Word: styles, media, headers, footers,
+macros, and untouched OOXML parts.
+
+It is written entirely in Go. There is no embedded JavaScript engine, Node.js
+runtime, Office dependency, helper process, or third-party Go module.
+
 > [!IMPORTANT]
-> نَمَط حاليًا في مرحلة **ما قبل الإصدار 1.0**. الواجهة الأساسية ولغة القوالب قابلة للاستخدام ومغطاة بالاختبارات، لكن ضمانات التوافق الدلالي تبدأ مع الإصدار `v1.0`.<br>
-> Namat is currently **pre-v1**. Its core API and template language are usable and tested, while semantic-version compatibility guarantees begin with `v1.0`.
+> Namat is currently **pre-v1**. The core API and template language are usable
+> and thoroughly tested. Semantic-version compatibility guarantees begin with
+> `v1.0`.
 
-<a id="why-namat"></a>
+## Why Namat?
 
-## لماذا نَمَط؟ · Why Namat?
+- **Pure Go** — embed one library and ship one native application binary.
+- **Word-first authoring** — create layouts and styles in Word instead of
+  rebuilding them in code.
+- **Safe expressions** — templates receive no implicit filesystem, process,
+  environment, reflection, or network access.
+- **Structure-aware rendering** — conditions and loops operate on paragraphs
+  and complete table rows, including nested blocks.
+- **Rich content** — generate text, images, links, HTML altChunks, line breaks,
+  and opt-in literal OOXML.
+- **Production controls** — enforce context cancellation, timeouts, ZIP limits,
+  output limits, aggregate iteration limits, and typed errors.
+- **Reusable compilation** — compile once and render safely from multiple
+  goroutines.
 
-نَمَط مكتبة مستقلة لإنشاء تقارير Word من قوالب يصممها المستخدم داخل Word نفسه. تحافظ المكتبة على الأنماط والصور والرؤوس والتذييلات والماكرو وأجزاء OOXML التي لا تحتاج إلى تعديل، وتغيّر فقط المواضع التي تحتوي على أوامر القالب.
+## Quick start
 
-Namat is a standalone library for generating Word reports from templates authored directly in Word. It preserves styles, media, headers, footers, macros, and untouched OOXML parts while changing only the areas that contain template commands.
-
-| | العربية | English |
-| --- | --- | --- |
-| **Go أصيل · Pure Go** | مكتبة واحدة داخل تطبيقك، دون runtime جانبي أو ملف تنفيذي إضافي. | One embeddable library with no sidecar runtime or extra executable. |
-| **Word أولًا · Word-first** | أنشئ التخطيط والتنسيق في Word بدل إعادة بنائهما برمجيًا. | Author layout and styling in Word instead of rebuilding them in code. |
-| **تعبيرات آمنة · Safe expressions** | محرك محدود لا يتيح الملفات أو العمليات أو الشبكة تلقائيًا. | A bounded engine with no implicit filesystem, process, or network access. |
-| **محتوى غني · Rich content** | نصوص، شروط، حلقات، جداول، صور، روابط، HTML وOOXML اختياري. | Text, conditions, loops, tables, images, links, HTML, and opt-in OOXML. |
-| **جاهز للإنتاج · Production controls** | مهلات وحدود موارد وأخطاء مصنفة وإلغاء عبر `context`. | Timeouts, resource limits, typed errors, and `context` cancellation. |
-| **إعادة استخدام متزامنة · Concurrent reuse** | اترجم القالب مرة واحدة واستخدمه بأمان من عدة goroutines. | Compile once and render safely from multiple goroutines. |
-
-<a id="english-overview"></a>
-
-### English overview
-
-Namat brings the familiar Word-template workflow to Go without embedding a JavaScript engine. It provides a native expression language, structural document commands, rich content, package-preserving OOXML updates, and explicit safety limits. Applications remain responsible for their data model and may expose narrowly scoped Go functions when templates need domain-specific formatting or calculations.
-
-### نبذة عربية
-
-يوفّر نَمَط أسلوب قوالب Word المألوف داخل Go دون تضمين محرك JavaScript. ويجمع بين لغة تعبيرات أصلية، وأوامر بنيوية للمستند، ومحتوى غني، وتعديل محافظ لحزمة OOXML، وحدود أمان صريحة. يبقى نموذج البيانات داخل التطبيق، ويمكنه تسجيل دوال Go محددة للتنسيق أو الحسابات الخاصة بمجاله.
-
-<a id="quick-start"></a>
-
-## البداية السريعة · Quick start
-
-### 1. التثبيت · Install
+### Install
 
 ```bash
 go get github.com/nawafinity/go-namat
 ```
 
-لا تعتمد المكتبة على أي حزمة Go خارجية.<br>
-The library has no third-party Go dependencies.
+### Author a Word template
 
-### 2. صمّم القالب في Word · Author the template in Word
-
-اكتب الأوامر مباشرة داخل ملف DOCX أو DOCM:<br>
-Type commands directly into a DOCX or DOCM file:
+Create a DOCX or DOCM file in Word and place commands directly in the document:
 
 ```text
-Report for [[customer.name]]
+Invoice for [[customer.name]]
 
 [[IF invoice.total > 0]]
-Total: [[money(invoice.total)]]
+Total: [[invoice.total]]
 [[ELSE]]
 No balance is due.
 [[END-IF]]
@@ -81,14 +72,13 @@ No balance is due.
 [[END-FOR item]]
 ```
 
-### 3. ترجم مرة وأنشئ تقارير متعددة · Compile once, render many
+### Compile once, render many
 
 ```go
 package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/nawafinity/go-namat"
@@ -100,22 +90,19 @@ func main() {
 		panic(err)
 	}
 
-	tmpl, err := namat.Compile(source, namat.Options{
-		Functions: map[string]namat.Function{
-			"money": func(args ...any) (any, error) {
-				return "$" + fmt.Sprint(args[0]), nil
-			},
-		},
-	})
+	tmpl, err := namat.Compile(source, namat.Options{})
 	if err != nil {
 		panic(err)
 	}
 
 	report, err := tmpl.Render(context.Background(), map[string]any{
-		"customer": map[string]any{"name": "Nawaf"},
+		"customer": map[string]any{"name": "Acme"},
 		"invoice": map[string]any{
-			"total": 250,
-			"items": []map[string]any{{"name": "Assessment"}},
+			"total": 250.00,
+			"items": []map[string]any{
+				{"name": "Assessment"},
+				{"name": "Implementation"},
+			},
 		},
 	})
 	if err != nil {
@@ -128,58 +115,63 @@ func main() {
 }
 ```
 
-المثال الكامل ينشئ تقريرًا عربيًا اصطناعيًا يحتوي على جدول وصورة ورابط وشروط وحلقات: [`examples/complete`](examples/complete).<br>
-The complete example generates a synthetic Arabic report with a table, image, link, conditions, and loops: [`examples/complete`](examples/complete).
+See [`examples/complete`](examples/complete) for a self-contained Arabic
+report containing a table, image, hyperlink, conditions, and loops.
 
-<a id="template-language"></a>
+## Template language
 
-## لغة القالب · Template language
+Commands use `[[` and `]]` by default. Both delimiters are configurable through
+`Options`.
 
-تستخدم الأوامر المحددات `[[` و`]]` افتراضيًا، ويمكن تغييرها من `Options`.<br>
-Commands use `[[` and `]]` by default; both delimiters are configurable through `Options`.
+| Command | Purpose |
+| --- | --- |
+| `[[value]]`, `[[INS value]]`, `[[= value]]` | Insert text |
+| `[[EXEC name = expression]]`, `[[! name = expression]]` | Assign a local value without output |
+| `[[SET name = expression]]` | Explicit assignment form |
+| `[[IF expression]]` / `[[ELSE]]` / `[[END-IF]]` | Render a conditional paragraph or table-row block |
+| `[[FOR item IN values]]` / `[[END-FOR item]]` | Repeat paragraphs or complete table rows |
+| `[[IMAGE expression]]` | Insert an inline image |
+| `[[LINK expression]]` | Insert an external hyperlink |
+| `[[HTML expression]]` | Insert a Word HTML altChunk |
+| `[[RAW-XML expression]]` | Insert trusted OOXML when explicitly enabled |
+| `[[QUERY query text]]` | Resolve report data through an application callback |
+| `[[ALIAS name INS expression]]`, `[[*name]]` | Define and reuse a complete command |
 
-| الأمر · Command | الغرض | Purpose |
-| --- | --- | --- |
-| `[[value]]`, `[[INS value]]`, `[[= value]]` | إدراج نص | Insert text |
-| `[[EXEC name = expression]]`, `[[! name = expression]]` | تعيين قيمة محلية دون إخراج | Assign a local value without output |
-| `[[SET name = expression]]` | صيغة تعيين صريحة | Explicit assignment alias |
-| `[[IF expression]]` / `[[ELSE]]` / `[[END-IF]]` | شرط على فقرة أو صف جدول | Conditional paragraph or table row |
-| `[[FOR item IN values]]` / `[[END-FOR item]]` | تكرار فقرات أو صفوف جداول | Repeat paragraphs or table rows |
-| `[[IMAGE expression]]` | إدراج صورة مضمنة | Insert an inline image |
-| `[[LINK expression]]` | إدراج رابط خارجي | Insert an external hyperlink |
-| `[[HTML expression]]` | إدراج Word HTML altChunk | Insert a Word HTML altChunk |
-| `[[RAW-XML expression]]` | إدراج OOXML موثوق عند تفعيله | Insert trusted OOXML when enabled |
-| `[[QUERY query text]]` | طلب البيانات عبر callback في Go | Resolve data through a Go callback |
-| `[[ALIAS name INS expression]]`, `[[*name]]` | تعريف أمر كامل وإعادة استخدامه | Define and reuse a complete command |
+Structural `IF` and `FOR` markers should occupy their own paragraph or table
+row. `HTML` and `RAW-XML` must occupy their own paragraph.
 
-ينبغي أن تكون علامات `IF` و`FOR` البنيوية في فقرة مستقلة أو صف جدول مستقل. ويجب أن يكون `HTML` و`RAW-XML` في فقرة مستقلة. يعالج نَمَط الأوامر التي يقسمها Word بين عدة XML runs، كما يعالج الانقسام المدعوم بين الفقرات المتجاورة.
+Word may split a command across several XML runs, and occasionally across
+adjacent paragraphs. Namat normalizes supported fragmented commands before
+compilation.
 
-Structural `IF` and `FOR` markers should occupy their own paragraph or table row. `HTML` and `RAW-XML` must occupy their own paragraph. Namat normalizes commands split by Word across multiple XML runs and supported adjacent paragraphs.
+### Expressions
 
-### التعبيرات · Expressions
+The native expression language is designed for data access and bounded
+calculations—not arbitrary code execution. It supports:
 
-لغة التعبيرات مخصصة للوصول إلى البيانات والحسابات المحدودة، وليست بيئة لتنفيذ شفرات عامة.<br>
-The expression language is designed for data access and bounded calculations—not arbitrary code execution.
+- maps, structs, JSON field names, pointers, arrays, slices, strings, and
+  indexes;
+- property access, optional chaining, and null coalescing with `??`;
+- arithmetic, comparison, equality, logical, and unary operators;
+- ternary expressions: `condition ? yes : no`;
+- array and object literals: `[1, 2]`, `{ url: url, label: name }`;
+- template strings: `` `Score: ${score}` ``;
+- string helpers such as `.slice()`, `.trim()`, `.toUpperCase()`,
+  `.contains()`, and `.startsWith()`;
+- collection helpers such as `.join()`, `.includes()`, and `.length`;
+- explicitly registered Go functions.
 
-- Maps, structs, JSON field names, pointers, arrays, slices, strings, and indexes.
-- Property access, optional chaining, and null coalescing with `??`.
-- Arithmetic, comparison, equality, logical, and unary operators.
-- Ternary expressions: `condition ? yes : no`.
-- Array and object literals: `[1, 2]`, `{ url: url, label: name }`.
-- Template strings: `` `Score: ${score}` ``.
-- String helpers such as `.slice()`, `.trim()`, `.toUpperCase()`, `.contains()`, and `.startsWith()`.
-- Collection helpers such as `.join()`, `.includes()`, and `.length`.
-- Explicitly registered Go functions.
+Loop variables use the `$` prefix, and `$idx` is zero-based. Registered Go
+functions are the native replacement for JavaScript helpers: they can be unit
+tested, profiled, and audited like ordinary Go code.
 
-متغيرات الحلقة تبدأ بـ `$`، ويمثل `$idx` الفهرس الذي يبدأ من الصفر. تحل دوال Go المسجلة محل JavaScript helpers، ويمكن اختبارها وقياسها ومراجعتها كأي شفرة Go عادية.<br>
-Loop variables use the `$` prefix, and `$idx` is zero-based. Registered Go functions replace JavaScript helpers and can be tested, profiled, and audited like ordinary Go code.
+## Rich content
 
-## المحتوى الغني · Rich content
+### Images
 
-### الصور · Images
-
-يدعم نَمَط PNG وJPEG وGIF وSVG كصور inline، مع أبعاد بالسنتيمتر، ودوران، ونص بديل، وتعليق اختياري. ويمكن لصورة SVG توفير thumbnail بصيغة PNG أو JPEG أو GIF للتوافق مع الإصدارات القديمة من Word والمعاينات.<br>
-Namat supports PNG, JPEG, GIF, and SVG as inline drawings, with centimeter dimensions, rotation, alt text, and optional captions. SVG values may include a PNG, JPEG, or GIF thumbnail for older Word versions and previews.
+`IMAGE` accepts `namat.Image` or an object with equivalent fields. Namat
+supports PNG, JPEG, GIF, and SVG as inline drawings, with dimensions in
+centimeters, rotation, alt text, and optional captions.
 
 ```go
 namat.Image{
@@ -191,14 +183,17 @@ namat.Image{
 }
 ```
 
-### الروابط وHTML وOOXML · Links, HTML, and OOXML
+SVG images may include a PNG, JPEG, or GIF thumbnail for older Word versions
+and document previews.
 
-- يقبل `LINK` قيمة `namat.Link` أو object expression، ويسمح افتراضيًا بـ `http` و`https` و`mailto` فقط.<br>
-  `LINK` accepts `namat.Link` or an object expression and allows only `http`, `https`, and `mailto` by default.
-- يستخدم `HTML` آلية OOXML `altChunk` التي يدعمها Microsoft Word، وقد يختلف استيرادها في LibreOffice وGoogle Docs.<br>
-  `HTML` uses OOXML `altChunk`, supported by Microsoft Word but imported inconsistently by LibreOffice and Google Docs.
-- يكون `RAW-XML` معطّلًا افتراضيًا لأنه يتجاوز escaping، ولا ينبغي تفعيله إلا للقوالب والقيم الموثوقة.<br>
-  `RAW-XML` is disabled by default because it bypasses escaping and should be enabled only for trusted templates and values.
+### Hyperlinks, HTML, and OOXML
+
+- `LINK` accepts `namat.Link` or an object expression. Only `http`, `https`,
+  and `mailto` are allowed by default.
+- `HTML` uses OOXML `altChunk`. Microsoft Word supports it; LibreOffice and
+  Google Docs may import it inconsistently.
+- `RAW-XML` is disabled by default because it bypasses escaping. Enable it only
+  when both the template and inserted values are trusted.
 
 ```text
 [[LINK ({ url: project.url, label: project.name })]]
@@ -208,7 +203,7 @@ namat.Image{
 options := namat.Options{AllowRawXML: true}
 ```
 
-## واجهة المكتبة · Library API
+## Library API
 
 ### Readers and writers
 
@@ -217,23 +212,25 @@ tmpl, err := namat.CompileReader(reader, options)
 err = tmpl.RenderTo(ctx, writer, data)
 ```
 
-يبقى `RenderTo` ذريًا من منظور الكاتب: تُبنى حزمة DOCX في الذاكرة أولًا، فلا يترك الخطأ مستندًا جزئيًا.<br>
-`RenderTo` remains transactional from the writer's perspective: the DOCX package is assembled in memory first, so an error does not leave a partial document.
+`RenderTo` is transactional from the writer's perspective: Namat assembles the
+DOCX package in memory before writing, so a rendering failure does not leave a
+partial document.
 
-### الفحص والبيانات الوصفية · Inspection and metadata
+### Inspection and metadata
 
 ```go
 commands, err := namat.ListCommands(templateBytes, options)
 metadata, err := namat.GetMetadata(documentBytes)
 ```
 
-يعيد `GetMetadata` خصائص Word المخزنة؛ ولا يدّعي إعادة حساب عدد الصفحات أو الكلمات المعتمد على التخطيط. ويحجب أمر CLI تعبيرات القالب افتراضيًا عند الفحص حفاظًا على الخصوصية.<br>
-`GetMetadata` returns cached Word properties; it does not claim to recalculate layout-dependent page or word counts. The CLI inspector hides template expressions by default for privacy.
+`GetMetadata` returns cached Word properties. It does not claim to recalculate
+layout-dependent page or word counts. The CLI inspector hides command
+expressions by default to reduce accidental data exposure.
 
 ### Query resolver
 
-يمكن للقالب إعلان `QUERY` واحد يمرره نَمَط دون تعديل إلى callback يملكه التطبيق. لا تفسر المكتبة SQL أو GraphQL ولا تفتح اتصالًا شبكيًا بنفسها.<br>
-A template may declare one `QUERY`, passed unchanged to an application-owned callback. Namat does not interpret SQL or GraphQL and never opens a network connection itself.
+A template may declare one `QUERY`. Namat passes its contents unchanged to an
+application-owned callback before rendering.
 
 ```go
 options := namat.Options{
@@ -243,10 +240,12 @@ options := namat.Options{
 }
 ```
 
-## أداة سطر الأوامر · CLI
+Namat does not interpret SQL, GraphQL, or another query language, and it never
+opens a network connection itself.
 
-أداة CLI اختيارية وتستخدم المكتبة نفسها:<br>
-The optional CLI uses the same library:
+## Command-line interface
+
+The optional CLI is built on the same public package:
 
 ```text
 namat inspect template.docx
@@ -255,51 +254,61 @@ namat metadata document.docx
 namat render --data data.json --out report.docx template.docx
 ```
 
-يرفض `render` استبدال ملف موجود ما لم يُمرر `--force` صراحة، ويكتب النتيجة عبر إعادة تسمية ذرية لملف مؤقت.<br>
-`render` refuses to overwrite an existing file unless `--force` is explicit and writes through an atomic temporary-file rename.
+`render` refuses to overwrite an existing file unless `--force` is explicit.
+It writes through an atomic temporary-file rename.
 
 ```bash
 go build -trimpath -ldflags="-s -w" ./cmd/namat
 ```
 
-## الأمان والاعتمادية · Safety and reliability
+## Safety model
 
-لا تمنح قوالب نَمَط وصولًا تلقائيًا إلى نظام الملفات أو العمليات أو متغيرات البيئة أو reflection أو الشبكة. ولا يصل القالب إلا إلى البيانات الممررة إلى `Render` والدوال التي يسجلها التطبيق صراحة.
+Templates can access only the data supplied to `Render` and the Go functions
+explicitly registered by the host application. They receive no implicit access
+to the filesystem, processes, environment variables, reflection APIs, or the
+network.
 
-Namat templates receive no implicit access to the filesystem, processes, environment variables, reflection, or the network. A template can access only the data passed to `Render` and functions explicitly registered by the host application.
+`Options` provides limits for:
 
-تشمل `Options` حدودًا لحجم القالب، وحجم كل ZIP part، وإجمالي المحتوى غير المضغوط، وعدد الأجزاء، وحجم الخرج، وإجمالي تكرارات الحلقات، ومدة الإنشاء. ويرفض القارئ مسارات traversal والأجزاء المكررة والحزم غير الصالحة.<br>
-`Options` provides limits for template bytes, each ZIP part, total uncompressed content, part count, output bytes, aggregate loop iterations, and render duration. The reader rejects traversal paths, duplicate parts, and invalid packages.
+- compressed template size;
+- individual ZIP-part size;
+- total uncompressed package size;
+- package-part count;
+- final output size;
+- aggregate loop iterations;
+- rendering duration.
 
-راجع [سياسة الأمان · Security policy](SECURITY.md) قبل قبول قوالب من مستخدمين غير موثوقين.
+The package reader rejects traversal paths, duplicate entries, oversized
+parts, and invalid packages. Read the [security policy](SECURITY.md) before
+accepting templates from untrusted users.
 
-## التوافق · Compatibility
+## Compatibility
 
-| Capability | Status | Notes · ملاحظات |
+| Capability | Status | Notes |
 | --- | --- | --- |
-| DOCX round trip | Supported | يحافظ على الأجزاء والوسائط غير المعدلة · Preserves untouched parts and media |
-| DOCM round trip | Supported | ينسخ أجزاء VBA دون تعديل · Copies VBA parts unchanged |
-| Split Word runs | Supported | أوامر موزعة بين runs وفقرات مدعومة · Commands split across runs and supported paragraphs |
-| Nested conditions and loops | Supported | فقرات وصفوف جداول · Paragraphs and table rows |
-| Headers, footers, notes | Supported | معالجة أجزاء `word/*.xml` ذات الصلة · Processes relevant `word/*.xml` parts |
-| PNG, JPEG, GIF, SVG | Supported | صور inline مع SVG fallback اختياري · Inline images with optional SVG fallback |
-| Hyperlinks | Supported | علاقات خارجية مع allowlist للبروتوكولات · External relationships with a scheme allowlist |
-| HTML altChunk | Supported | في المستند الرئيسي فقط · Main document only |
-| Literal OOXML | Opt-in | للمدخلات الموثوقة فقط · Trusted input only |
-| Arbitrary JavaScript | Not supported | يُستبدل بدوال Go مسجلة · Replaced by registered Go functions |
-| Floating images | Not generated | صور inline أكثر قابلية للنقل · Inline drawings are more portable |
+| DOCX round trip | Supported | Preserves untouched parts and media |
+| DOCM round trip | Supported | Copies VBA parts unchanged |
+| Commands split across Word runs | Supported | Includes supported adjacent-paragraph splits |
+| Nested conditions and loops | Supported | Paragraphs and complete table rows |
+| Headers, footers, and notes | Supported | Processes relevant `word/*.xml` parts |
+| PNG, JPEG, GIF, and SVG | Supported | Inline drawings with optional SVG fallback |
+| External hyperlinks | Supported | Scheme allowlist enforced |
+| HTML altChunk | Supported | Main document only |
+| Literal OOXML | Opt-in | Trusted input only |
+| Arbitrary JavaScript | Not supported | Replace with registered Go functions |
+| Floating images | Not generated | Inline drawings are more portable |
 
-للتفاصيل الدقيقة وحدود السلوك، راجع [مصفوفة التوافق الكاملة](docs/COMPATIBILITY.md).<br>
-For exact behavior and limitations, see the [full compatibility matrix](docs/COMPATIBILITY.md).
+See the [full compatibility matrix](docs/COMPATIBILITY.md) for exact behavior
+and limitations.
 
-## الجودة والأداء · Quality and performance
+## Quality and performance
 
 | Quality gate | Current guarantee |
 | --- | --- |
 | Statement coverage | **100%** independently for the public facade, rendering engine, expression engine, CLI, and complete example |
 | Behavioral coverage | Every documented core capability maps to an automated test |
 | Platforms | CI runs on Linux, Windows, and macOS |
-| Concurrency | Race detector plus concurrent rendering tests |
+| Concurrency | Race detector and concurrent-rendering tests |
 | Robustness | Fuzz targets for commands, ZIP packages, reports, and expressions |
 | Test data | Generated, synthetic, English, and product-neutral fixtures |
 
@@ -311,12 +320,11 @@ go vet ./...
 go test -run '^$' -bench . -benchmem ./...
 ```
 
-يفصل نَمَط الترجمة عن الإنشاء: ترجم كل قالب مرة واحدة وأعد استخدام `Template` غير القابل للتغيير عبر goroutines. يسجل المشروع baseline مؤرخًا للقياس، لكنه لا يقدمه كضمان صالح لكل الأجهزة.<br>
-Namat separates compilation from rendering: compile each template once and reuse the immutable `Template` across goroutines. The project records a dated benchmark baseline, but does not present it as a cross-machine guarantee.
+For high-throughput workloads, compile each template once and reuse the
+immutable `Template` across goroutines. See the [performance guide](docs/PERFORMANCE.md)
+and the dated [benchmark baseline](docs/BENCHMARKS.md).
 
-راجع [منهجية الأداء](docs/PERFORMANCE.md) و[آخر baseline](docs/BENCHMARKS.md).
-
-## ما الذي يتضمنه المستودع؟ · What's included
+## Repository structure
 
 ```text
 go-namat/
@@ -330,51 +338,59 @@ go-namat/
 └── *_test.go            public API examples and repository policy checks
 ```
 
+The `internal` boundary prevents consumers from depending on implementation
+details while keeping the public import path concise:
+
+```go
+import "github.com/nawafinity/go-namat"
+```
+
 <a id="documentation"></a>
 
-## التوثيق · Documentation
+## Documentation
 
-| Document | العربية · English |
+| Document | Contents |
 | --- | --- |
-| [Architecture](docs/ARCHITECTURE.md) | بنية المحرك وحدود المكونات · Engine structure and component boundaries |
-| [Compatibility](docs/COMPATIBILITY.md) | ما تدعمه المكتبة وحدوده · Supported behavior and limitations |
-| [Core feature coverage](docs/FEATURE_COVERAGE.md) | ربط كل ميزة أساسية باختبار آلي · Mapping every core feature to automated evidence |
-| [Testing](docs/TESTING.md) | تنظيم الاختبارات وسياسة عزل البيانات · Test layout and data-isolation policy |
-| [Internationalization](docs/INTERNATIONALIZATION.md) | Unicode وRTL ومسؤوليات locale · Unicode, RTL, and locale responsibilities |
-| [Performance](docs/PERFORMANCE.md) | نموذج الأداء وكيفية القياس · Performance model and benchmarking guidance |
-| [Roadmap](docs/ROADMAP.md) | الطريق إلى الإصدار 1.0 · Path to v1.0 |
-| [Security](SECURITY.md) | نموذج الثقة والإبلاغ عن الثغرات · Trust model and vulnerability reporting |
-| [Changelog](CHANGELOG.md) | التغييرات الملحوظة · Notable changes |
+| [Architecture](docs/ARCHITECTURE.md) | Rendering pipeline and component boundaries |
+| [Compatibility](docs/COMPATIBILITY.md) | Supported behavior and known limitations |
+| [Core feature coverage](docs/FEATURE_COVERAGE.md) | Automated evidence for every core capability |
+| [Testing](docs/TESTING.md) | Test layout, quality commands, and data-isolation policy |
+| [Internationalization](docs/INTERNATIONALIZATION.md) | Unicode, RTL, and locale responsibilities |
+| [Performance](docs/PERFORMANCE.md) | Performance model and benchmarking guidance |
+| [Roadmap](docs/ROADMAP.md) | Remaining work toward v1.0 |
+| [Security](SECURITY.md) | Trust model and vulnerability reporting |
+| [Changelog](CHANGELOG.md) | Notable project changes |
 
-## خارطة الطريق · Roadmap
+## Roadmap
 
-اكتملت المراحل الأساسية للمحرك النصي والمحتوى الغني وتوافق التأليف وتقوية الإنتاج. تركز الأعمال المتبقية قبل `v1.0` على fixtures عامة للتوافق البصري، ودليل ترحيل بإصدارات دلالية، وإصدارات موقعة لأداة CLI. تبقى أي تكاملات أو عمليات ترحيل خاصة بمنتج معين خارج هذا المستودع المستقل.
+The native text engine, rich-content support, authoring compatibility, and
+production-hardening foundations are complete. Remaining pre-v1 work focuses
+on public visual-compatibility fixtures, a semantic-versioned migration guide,
+and signed CLI releases.
 
-The native text engine, rich-content, authoring-compatibility, and production-hardening foundations are complete. Remaining pre-`v1.0` work focuses on public visual-compatibility fixtures, a semantic-versioned migration guide, and signed CLI releases. Product-specific integrations and migrations remain outside this standalone repository.
+Product-specific integrations and migrations intentionally live outside this
+standalone repository. See the detailed [roadmap](docs/ROADMAP.md).
 
-See the detailed [roadmap](docs/ROADMAP.md).
+## Contributing
 
-## المساهمة · Contributing
+Contributions are welcome when they preserve the pure-Go design: no JavaScript
+runtime, helper executable, or hidden network dependency. Tests must use
+synthetic documents and values only—never customer templates, production data,
+credentials, or confidential material.
 
-نرحب بالإصلاحات والتحسينات التي تحافظ على كون المشروع Go أصيلًا، دون JavaScript runtime أو برامج مساعدة أو اعتماد شبكي خفي. يجب أن تستخدم الاختبارات مستندات وبيانات اصطناعية فقط، وألا تتضمن قوالب عملاء أو بيانات إنتاج أو معلومات سرية.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change.
 
-Fixes and improvements are welcome when they preserve the pure-Go design, with no JavaScript runtime, helper executable, or hidden network dependency. Tests must use synthetic documents and values only—never customer templates, production data, or confidential information.
+## The name
 
-اقرأ [دليل المساهمة](CONTRIBUTING.md) قبل إرسال التغييرات.<br>
-Read the [contribution guide](CONTRIBUTING.md) before submitting changes.
+**Namat (نَمَط)** is the Arabic word for a pattern, mode, or template. It
+describes the library directly and remains short in Go imports.
 
-## الاسم · The name
+## License
 
-**نَمَط** كلمة عربية تعني pattern أو mode أو template؛ اسم قصير يصف المكتبة مباشرة ويظل واضحًا داخل Go imports.<br>
-**Namat (نَمَط)** is the Arabic word for a pattern, mode, or template—a short name that describes the library and stays clear in Go imports.
-
-## الترخيص · License
-
-مرخّص بموجب [MIT](LICENSE).<br>
-Licensed under the [MIT License](LICENSE).
+Namat is available under the [MIT License](LICENSE).
 
 <div align="center">
 
-**صمّم في Word. أنشئ باستخدام Go. · Author in Word. Render with Go.**
+**Author in Word. Render with Go.**
 
 </div>
