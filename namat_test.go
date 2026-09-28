@@ -169,13 +169,41 @@ func TestCompileRejectsUnbalancedStructure(t *testing.T) {
 	}
 }
 
+func TestDOCMRoundTripPreservesMacroProject(t *testing.T) {
+	macro := []byte{0xd0, 0xcf, 0x11, 0xe0, 0x00, 0x01, 0x02, 0x03}
+	macroContentTypes := `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/><Override PartName="/word/document.xml" ContentType="application/vnd.ms-word.document.macroEnabled.main+xml"/></Types>`
+	template := testDOCX(t, map[string][]byte{
+		"[Content_Types].xml": []byte(macroContentTypes),
+		"word/document.xml":   []byte(wordDocument(`<w:p><w:r><w:t>[[name]]</w:t></w:r></w:p>`)),
+		"word/vbaProject.bin": macro,
+	})
+	report, err := CreateReport(context.Background(), template, map[string]any{"name": "macro"}, Options{})
+	if err != nil {
+		t.Fatalf("CreateReport: %v", err)
+	}
+	if got := readPart(t, report, "word/vbaProject.bin"); !bytes.Equal(got, macro) {
+		t.Fatalf("macro project changed: %v", got)
+	}
+	if got := string(readPart(t, report, "[Content_Types].xml")); !strings.Contains(got, "macroEnabled.main+xml") {
+		t.Fatalf("macro content type changed: %s", got)
+	}
+}
+
+func TestRejectsMismatchedEndForName(t *testing.T) {
+	document := wordDocument(`<w:p><w:r><w:t>[[FOR item IN items]]</w:t></w:r></w:p><w:p><w:r><w:t>[[END-FOR other]]</w:t></w:r></w:p>`)
+	_, err := Compile(testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)}), Options{})
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("error = %v, want mismatched loop variable", err)
+	}
+}
+
 func wordDocument(body string) string {
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body>` + body + `<w:sectPr/></w:body></w:document>`
 }
 
-func testDOCX(t *testing.T, parts map[string][]byte) []byte {
+func testDOCX(t testing.TB, parts map[string][]byte) []byte {
 	t.Helper()
 	all := map[string][]byte{
 		"[Content_Types].xml": []byte(contentTypesXML),

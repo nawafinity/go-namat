@@ -127,6 +127,21 @@ func structuralCommand(node *xmlNode, options Options) (Command, bool, error) {
 	return *found, true, nil
 }
 
+func standaloneCommand(node *xmlNode, options Options) (Command, bool, error) {
+	if !node.is("p") {
+		return Command{}, false, nil
+	}
+	text := strings.TrimSpace(textOfParagraph(node))
+	spans, err := commandSpans(text, options)
+	if err != nil {
+		return Command{}, false, err
+	}
+	if len(spans) != 1 || spans[0].Start != 0 || spans[0].End != len(text) {
+		return Command{}, false, nil
+	}
+	return spans[0].Command, true, nil
+}
+
 func validateStructure(root *xmlNode, options Options) error {
 	return validateNodeStructure(root, options)
 }
@@ -154,6 +169,10 @@ func validateNodeStructure(parent *xmlNode, options Options) error {
 			case CommandEndFor:
 				if len(stack) == 0 || stack[len(stack)-1].Type != CommandFor {
 					return fmt.Errorf("END-FOR without matching FOR")
+				}
+				startVariable := strings.TrimPrefix(stack[len(stack)-1].Variable, "$")
+				if command.Variable != "" && command.Variable != startVariable {
+					return fmt.Errorf("END-FOR %s does not match FOR %s", command.Variable, startVariable)
 				}
 				stack = stack[:len(stack)-1]
 			}

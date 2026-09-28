@@ -24,6 +24,13 @@ func TestExpressionLanguage(t *testing.T) {
 		{"wrap(agency.name)", "[هيئة البيانات]"},
 		{"`Score: ${agency.score}`", "Score: 91.5"},
 		{"$idx + 1", float64(3)},
+		{"agency.score >= 90 ? 'ممتاز' : 'جيد'", "ممتاز"},
+		{"[agency.name, items[0].name][1]", "API"},
+		{"({ url: 'https://example.com', label: agency.name }).label", "هيئة البيانات"},
+		{"agency.name.slice(0, 4)", "هيئة"},
+		{"agency.name.length > 5", true},
+		{"['أ', 'ب', 'ج'].join('-')", "أ-ب-ج"},
+		{"items.includes(items[0])", true},
 	}
 	for _, test := range tests {
 		program, err := Compile(test.expression)

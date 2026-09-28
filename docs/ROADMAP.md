@@ -13,27 +13,27 @@
 
 ## M2 — rich content
 
-- [ ] PNG, JPEG, GIF, and SVG images
-- [ ] image fallback thumbnails, rotation, alt text, and captions
-- [ ] external hyperlinks
-- [ ] literal OOXML insertion
-- [ ] HTML altChunk with isolated relationship updates
+- [x] PNG, JPEG, GIF, and SVG images
+- [x] image fallback thumbnails, rotation, alt text, and captions
+- [x] external hyperlinks
+- [x] literal OOXML insertion
+- [x] HTML altChunk with isolated relationship updates
 
 ## M3 — authoring compatibility
 
-- [ ] query resolver interface
-- [ ] command aliases
-- [ ] configurable smart-quote normalization
-- [ ] line-break processing
-- [ ] metadata reader
-- [ ] structured error classes and fail-fast/collect modes
+- [x] query resolver interface
+- [x] command aliases
+- [x] configurable smart-quote normalization
+- [x] line-break processing
+- [x] metadata reader
+- [x] structured error categories and collect mode
 
 ## M4 — production hardening
 
 - [ ] golden rendering fixtures for Word, LibreOffice, and Google Docs
 - [ ] public compatibility fixtures derived from permissively licensed sources
-- [ ] fuzzing for ZIP, XML, commands, and expressions
-- [ ] allocation and throughput benchmarks
+- [x] fuzz seeds for ZIP, commands, reports, and expressions
+- [x] allocation and throughput benchmarks
 - [ ] semantic-versioned API and migration guide
 - [ ] signed releases for the optional CLI
 

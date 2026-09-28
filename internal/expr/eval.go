@@ -38,6 +38,56 @@ type literalNode struct{ value any }
 
 func (n literalNode) eval(*Context) (any, error) { return n.value, nil }
 
+type arrayNode struct{ values []node }
+
+func (n arrayNode) eval(ctx *Context) (any, error) {
+	values := make([]any, len(n.values))
+	for index, value := range n.values {
+		resolved, err := value.eval(ctx)
+		if err != nil {
+			return nil, err
+		}
+		values[index] = resolved
+	}
+	return values, nil
+}
+
+type objectEntry struct {
+	key   string
+	value node
+}
+
+type objectNode struct{ entries []objectEntry }
+
+func (n objectNode) eval(ctx *Context) (any, error) {
+	value := make(map[string]any, len(n.entries))
+	for _, entry := range n.entries {
+		resolved, err := entry.value.eval(ctx)
+		if err != nil {
+			return nil, err
+		}
+		value[entry.key] = resolved
+	}
+	return value, nil
+}
+
+type conditionalNode struct {
+	condition node
+	whenTrue  node
+	whenFalse node
+}
+
+func (n conditionalNode) eval(ctx *Context) (any, error) {
+	condition, err := n.condition.eval(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if truthy(condition) {
+		return n.whenTrue.eval(ctx)
+	}
+	return n.whenFalse.eval(ctx)
+}
+
 type identifierNode struct{ name string }
 
 type unknownIdentifierError struct{ name string }
@@ -91,12 +141,157 @@ func (n memberNode) eval(ctx *Context) (any, error) {
 	}
 	value, ok := lookup(target, key)
 	if !ok {
+		if member, found := builtinMember(target, stringify(key)); found {
+			return member, nil
+		}
 		if n.optional {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("namat expression: property %v not found", key)
 	}
 	return value, nil
+}
+
+func builtinMember(target any, name string) (any, bool) {
+	v := reflect.ValueOf(target)
+	for v.IsValid() && (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) {
+		if v.IsNil() {
+			return nil, false
+		}
+		v = v.Elem()
+	}
+	if !v.IsValid() {
+		return nil, false
+	}
+	switch v.Kind() {
+	case reflect.String:
+		text := v.String()
+		switch name {
+		case "length":
+			return len([]rune(text)), true
+		case "trim":
+			return Function(func(args ...any) (any, error) {
+				if len(args) != 0 {
+					return nil, fmt.Errorf("trim expects no arguments")
+				}
+				return strings.TrimSpace(text), nil
+			}), true
+		case "toUpperCase", "upper":
+			return Function(func(args ...any) (any, error) {
+				if len(args) != 0 {
+					return nil, fmt.Errorf("%s expects no arguments", name)
+				}
+				return strings.ToUpper(text), nil
+			}), true
+		case "toLowerCase", "lower":
+			return Function(func(args ...any) (any, error) {
+				if len(args) != 0 {
+					return nil, fmt.Errorf("%s expects no arguments", name)
+				}
+				return strings.ToLower(text), nil
+			}), true
+		case "contains", "includes":
+			return Function(func(args ...any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%s expects one argument", name)
+				}
+				return strings.Contains(text, stringify(args[0])), nil
+			}), true
+		case "startsWith":
+			return Function(func(args ...any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("startsWith expects one argument")
+				}
+				return strings.HasPrefix(text, stringify(args[0])), nil
+			}), true
+		case "endsWith":
+			return Function(func(args ...any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("endsWith expects one argument")
+				}
+				return strings.HasSuffix(text, stringify(args[0])), nil
+			}), true
+		case "slice":
+			return Function(func(args ...any) (any, error) {
+				if len(args) < 1 || len(args) > 2 {
+					return nil, fmt.Errorf("slice expects one or two arguments")
+				}
+				runes := []rune(text)
+				start, ok := integer(args[0])
+				if !ok {
+					return nil, fmt.Errorf("slice start must be an integer")
+				}
+				end := len(runes)
+				if len(args) == 2 {
+					end, ok = integer(args[1])
+					if !ok {
+						return nil, fmt.Errorf("slice end must be an integer")
+					}
+				}
+				start, end = normalizeSliceBounds(start, end, len(runes))
+				return string(runes[start:end]), nil
+			}), true
+		}
+	case reflect.Array, reflect.Slice:
+		switch name {
+		case "length":
+			return v.Len(), true
+		case "join":
+			return Function(func(args ...any) (any, error) {
+				if len(args) > 1 {
+					return nil, fmt.Errorf("join expects zero or one argument")
+				}
+				separator := ","
+				if len(args) == 1 {
+					separator = stringify(args[0])
+				}
+				items := make([]string, v.Len())
+				for index := 0; index < v.Len(); index++ {
+					items[index] = stringify(v.Index(index).Interface())
+				}
+				return strings.Join(items, separator), nil
+			}), true
+		case "includes", "contains":
+			return Function(func(args ...any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%s expects one argument", name)
+				}
+				for index := 0; index < v.Len(); index++ {
+					if equal(v.Index(index).Interface(), args[0]) {
+						return true, nil
+					}
+				}
+				return false, nil
+			}), true
+		}
+	case reflect.Map:
+		if name == "length" {
+			return v.Len(), true
+		}
+	}
+	return nil, false
+}
+
+func normalizeSliceBounds(start, end, length int) (int, int) {
+	if start < 0 {
+		start = length + start
+	}
+	if end < 0 {
+		end = length + end
+	}
+	if start < 0 {
+		start = 0
+	}
+	if start > length {
+		start = length
+	}
+	if end < start {
+		end = start
+	}
+	if end > length {
+		end = length
+	}
+	return start, end
 }
 
 type callNode struct {

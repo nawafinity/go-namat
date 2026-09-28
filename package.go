@@ -3,8 +3,10 @@ package namat
 import (
 	"archive/zip"
 	"bytes"
+	"compress/flate"
 	"fmt"
 	"io"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,17 +23,39 @@ type docxPackage struct {
 }
 
 func readPackage(data []byte) (*docxPackage, error) {
+	return readPackageWithLimits(data, 256<<20, 1<<30, 10_000)
+}
+
+func readPackageWithLimits(data []byte, maxPartBytes, maxUncompressedBytes int64, maxParts int) (*docxPackage, error) {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return nil, fmt.Errorf("open DOCX package: %w", err)
+		return nil, fmt.Errorf("%w: open DOCX package: %w", ErrInvalidTemplate, err)
+	}
+	if len(reader.File) > maxParts {
+		return nil, fmt.Errorf("%w: DOCX package contains %d parts; limit is %d", ErrSecurityLimit, len(reader.File), maxParts)
 	}
 	pkg := &docxPackage{Parts: make(map[string]*packagePart), Order: make([]string, 0, len(reader.File))}
+	var total int64
 	for _, file := range reader.File {
+		name := strings.ReplaceAll(file.Name, "\\", "/")
+		if name == "" || strings.HasPrefix(name, "/") || path.Clean(name) != name || strings.HasPrefix(name, "../") {
+			return nil, fmt.Errorf("%w: invalid OOXML package part name %q", ErrInvalidTemplate, file.Name)
+		}
+		if _, exists := pkg.Parts[name]; exists {
+			return nil, fmt.Errorf("%w: duplicate OOXML package part %q", ErrInvalidTemplate, name)
+		}
+		if file.UncompressedSize64 > uint64(maxPartBytes) {
+			return nil, fmt.Errorf("%w: package part %s exceeds size limit", ErrSecurityLimit, name)
+		}
+		total += int64(file.UncompressedSize64)
+		if total > maxUncompressedBytes {
+			return nil, fmt.Errorf("%w: DOCX uncompressed content exceeds size limit", ErrSecurityLimit)
+		}
 		stream, err := file.Open()
 		if err != nil {
 			return nil, fmt.Errorf("open package part %s: %w", file.Name, err)
 		}
-		content, readErr := io.ReadAll(stream)
+		content, readErr := io.ReadAll(io.LimitReader(stream, maxPartBytes+1))
 		closeErr := stream.Close()
 		if readErr != nil {
 			return nil, fmt.Errorf("read package part %s: %w", file.Name, readErr)
@@ -39,15 +63,19 @@ func readPackage(data []byte) (*docxPackage, error) {
 		if closeErr != nil {
 			return nil, fmt.Errorf("close package part %s: %w", file.Name, closeErr)
 		}
+		if int64(len(content)) > maxPartBytes {
+			return nil, fmt.Errorf("%w: package part %s exceeds size limit", ErrSecurityLimit, name)
+		}
 		header := file.FileHeader
-		pkg.Parts[file.Name] = &packagePart{Header: header, Data: content}
-		pkg.Order = append(pkg.Order, file.Name)
+		header.Name = name
+		pkg.Parts[name] = &packagePart{Header: header, Data: content}
+		pkg.Order = append(pkg.Order, name)
 	}
 	if _, ok := pkg.Parts["[Content_Types].xml"]; !ok {
-		return nil, fmt.Errorf("not an OOXML package: [Content_Types].xml is missing")
+		return nil, fmt.Errorf("%w: not an OOXML package: [Content_Types].xml is missing", ErrInvalidTemplate)
 	}
 	if _, ok := pkg.Parts["word/document.xml"]; !ok {
-		return nil, fmt.Errorf("not a Word DOCX package: word/document.xml is missing")
+		return nil, fmt.Errorf("%w: not a Word DOCX package: word/document.xml is missing", ErrInvalidTemplate)
 	}
 	return pkg, nil
 }
@@ -62,8 +90,15 @@ func (p *docxPackage) clone() *docxPackage {
 }
 
 func (p *docxPackage) bytes() ([]byte, error) {
+	return p.bytesWithCompression(flate.BestSpeed)
+}
+
+func (p *docxPackage) bytesWithCompression(level int) ([]byte, error) {
 	var out bytes.Buffer
 	writer := zip.NewWriter(&out)
+	writer.RegisterCompressor(zip.Deflate, func(destination io.Writer) (io.WriteCloser, error) {
+		return flate.NewWriter(destination, level)
+	})
 	seen := make(map[string]bool, len(p.Parts))
 	writePart := func(name string, part *packagePart) error {
 		header := part.Header

@@ -28,6 +28,19 @@ type xmlNode struct {
 	Children []*xmlNode
 }
 
+type xmlAttribute struct {
+	name  string
+	value string
+}
+
+func elementNode(name string, attributes ...xmlAttribute) *xmlNode {
+	node := &xmlNode{Type: xmlElement, Name: xml.Name{Local: name}}
+	for _, attribute := range attributes {
+		node.Attrs = append(node.Attrs, xml.Attr{Name: xml.Name{Local: attribute.name}, Value: attribute.value})
+	}
+	return node
+}
+
 func parseXML(data []byte) (*xmlNode, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	root := &xmlNode{Type: xmlDocument}
@@ -186,4 +199,32 @@ func textNodes(paragraph *xmlNode) []*xmlNode {
 		}
 	}
 	return result
+}
+
+func setTextOfNode(node *xmlNode, value string) error {
+	nodes := textNodes(node)
+	if len(nodes) == 0 {
+		if value == "" {
+			return nil
+		}
+		return fmt.Errorf("OOXML node contains no text element")
+	}
+	nodes[0].Data = value
+	for _, text := range nodes[1:] {
+		text.Data = ""
+	}
+	return nil
+}
+
+func parseXMLFragment(source string) ([]*xmlNode, error) {
+	wrapper := `<namat:fragment xmlns:namat="urn:namat" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` + source + `</namat:fragment>`
+	root, err := parseXML([]byte(wrapper))
+	if err != nil {
+		return nil, err
+	}
+	fragment := firstElement(root)
+	if fragment == nil {
+		return nil, fmt.Errorf("empty XML fragment")
+	}
+	return fragment.Children, nil
 }

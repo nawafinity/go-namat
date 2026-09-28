@@ -18,6 +18,10 @@ const (
 	tokenDot
 	tokenOptionalDot
 	tokenOperator
+	tokenLBrace
+	tokenRBrace
+	tokenColon
+	tokenQuestion
 )
 
 type token struct {

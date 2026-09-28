@@ -54,6 +54,21 @@ func (p *parser) parseExpression(minPrecedence int) (node, error) {
 		}
 		left = binaryNode{op: tok.text, left: left, right: right}
 	}
+	if minPrecedence == 0 && p.peek().kind == tokenQuestion {
+		p.next()
+		whenTrue, err := p.parseExpression(0)
+		if err != nil {
+			return nil, err
+		}
+		if colon := p.next(); colon.kind != tokenColon {
+			return nil, fmt.Errorf("namat expression: expected : at byte %d", colon.pos)
+		}
+		whenFalse, err := p.parseExpression(0)
+		if err != nil {
+			return nil, err
+		}
+		left = conditionalNode{condition: left, whenTrue: whenTrue, whenFalse: whenFalse}
+	}
 	return left, nil
 }
 
@@ -149,6 +164,51 @@ func (p *parser) parsePrimary() (node, error) {
 			return nil, fmt.Errorf("namat expression: expected ) at byte %d", close.pos)
 		}
 		return value, nil
+	case tokenLBracket:
+		var values []node
+		if p.peek().kind != tokenRBracket {
+			for {
+				value, err := p.parseExpression(0)
+				if err != nil {
+					return nil, err
+				}
+				values = append(values, value)
+				if p.peek().kind != tokenComma {
+					break
+				}
+				p.next()
+			}
+		}
+		if close := p.next(); close.kind != tokenRBracket {
+			return nil, fmt.Errorf("namat expression: expected ] at byte %d", close.pos)
+		}
+		return arrayNode{values: values}, nil
+	case tokenLBrace:
+		entries := make([]objectEntry, 0)
+		if p.peek().kind != tokenRBrace {
+			for {
+				key := p.next()
+				if key.kind != tokenIdentifier && key.kind != tokenString {
+					return nil, fmt.Errorf("namat expression: expected object key at byte %d", key.pos)
+				}
+				if colon := p.next(); colon.kind != tokenColon {
+					return nil, fmt.Errorf("namat expression: expected : at byte %d", colon.pos)
+				}
+				value, err := p.parseExpression(0)
+				if err != nil {
+					return nil, err
+				}
+				entries = append(entries, objectEntry{key: key.text, value: value})
+				if p.peek().kind != tokenComma {
+					break
+				}
+				p.next()
+			}
+		}
+		if close := p.next(); close.kind != tokenRBrace {
+			return nil, fmt.Errorf("namat expression: expected } at byte %d", close.pos)
+		}
+		return objectNode{entries: entries}, nil
 	default:
 		return nil, fmt.Errorf("namat expression: expected value at byte %d", tok.pos)
 	}

@@ -16,8 +16,11 @@ or embed a JavaScript engine.
 5. **Native expression evaluator** resolves Go maps, structs, slices,
    registered host functions, local variables, and bounded operators.
 6. **Structural renderer** clones paragraph or table-row ranges for conditions
-   and loops, then renders leaf commands.
-7. **Package writer** serializes changed parts and copies untouched media and
+   and loops, then renders leaf commands into text or OOXML nodes.
+7. **Resource layer** allocates collision-free drawing identifiers, media
+   parts, content types, and part-local relationships for images, links, and
+   HTML chunks.
+8. **Package writer** serializes changed parts and copies untouched media and
    relationships into a valid DOCX result.
 
 ## Trust boundaries

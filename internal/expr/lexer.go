@@ -69,6 +69,15 @@ func (l *lexer) next() (token, error) {
 	case ',':
 		l.pos += size
 		return token{kind: tokenComma, text: ",", pos: start}, nil
+	case '{':
+		l.pos += size
+		return token{kind: tokenLBrace, text: "{", pos: start}, nil
+	case '}':
+		l.pos += size
+		return token{kind: tokenRBrace, text: "}", pos: start}, nil
+	case ':':
+		l.pos += size
+		return token{kind: tokenColon, text: ":", pos: start}, nil
 	case '.':
 		l.pos += size
 		return token{kind: tokenDot, text: ".", pos: start}, nil
@@ -85,6 +94,10 @@ func (l *lexer) next() (token, error) {
 			}
 			return token{kind: kind, text: op, pos: start}, nil
 		}
+	}
+	if r == '?' {
+		l.pos += size
+		return token{kind: tokenQuestion, text: "?", pos: start}, nil
 	}
 	return token{}, fmt.Errorf("namat expression: unexpected character %q at byte %d", r, start)
 }
