@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a general-purpose addition to the standalone library.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: General use case
+      description: Explain the reusable DOCX workflow without product-specific details.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and security considerations
+      description: Note affected Word clients, OOXML parts, limits, or trust boundaries.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This proposal is useful beyond one application or private template.
+          required: true

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderInlineImageAddsMediaRelationshipAndContentType(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t xml:space="preserve">قبل </w:t></w:r><w:r><w:t>[[IMAGE logo()]]</w:t></w:r><w:r><w:t xml:space="preserve"> بعد</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t xml:space="preserve">Before </w:t></w:r><w:r><w:t>[[IMAGE logo()]]</w:t></w:r><w:r><w:t xml:space="preserve"> after</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 	if err != nil {
@@ -17,7 +17,7 @@ func TestRenderInlineImageAddsMediaRelationshipAndContentType(t *testing.T) {
 	report, err := CreateReport(context.Background(), template, nil, Options{
 		Functions: map[string]Function{
 			"logo": func(args ...any) (any, error) {
-				return Image{Data: png, Extension: ".png", Width: 1.5, Height: 1.5, Alt: "شعار"}, nil
+				return Image{Data: png, Extension: ".png", Width: 1.5, Height: 1.5, Alt: "Logo"}, nil
 			},
 		},
 	})
@@ -43,7 +43,7 @@ func TestRenderInlineImageAddsMediaRelationshipAndContentType(t *testing.T) {
 	if !strings.Contains(contentTypes, `Extension="png"`) || !strings.Contains(contentTypes, `ContentType="image/png"`) {
 		t.Fatalf("PNG content type is missing: %s", contentTypes)
 	}
-	if got := documentText(t, report); !strings.Contains(got, "قبل  بعد") || strings.Contains(got, "IMAGE") {
+	if got := documentText(t, report); !strings.Contains(got, "Before  after") || strings.Contains(got, "IMAGE") {
 		t.Fatalf("unexpected visible text: %q", got)
 	}
 }
@@ -137,7 +137,7 @@ func TestImageDrawingIdentifiersDoNotCollide(t *testing.T) {
 }
 
 func TestRenderInlineLinkFromObjectExpression(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[LINK ({ url: 'https://example.com/document', label: 'رابط تجريبي' })]]</w:t></w:r><w:r><w:t xml:space="preserve"> متاح</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[LINK ({ url: 'https://example.com/document', label: 'Example link' })]]</w:t></w:r><w:r><w:t xml:space="preserve"> available</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	report, err := CreateReport(context.Background(), template, nil, Options{})
 	if err != nil {
@@ -148,14 +148,14 @@ func TestRenderInlineLinkFromObjectExpression(t *testing.T) {
 		t.Fatal(err)
 	}
 	documentXML := string(pkg.Parts["word/document.xml"].Data)
-	if !strings.Contains(documentXML, "<w:hyperlink") || !strings.Contains(documentXML, "رابط تجريبي") {
+	if !strings.Contains(documentXML, "<w:hyperlink") || !strings.Contains(documentXML, "Example link") {
 		t.Fatalf("hyperlink markup is missing: %s", documentXML)
 	}
 	rels := string(pkg.Parts["word/_rels/document.xml.rels"].Data)
 	if !strings.Contains(rels, `Target="https://example.com/document"`) || !strings.Contains(rels, `TargetMode="External"`) {
 		t.Fatalf("external hyperlink relationship is incomplete: %s", rels)
 	}
-	if got := documentText(t, report); !strings.Contains(got, "رابط تجريبي متاح") {
+	if got := documentText(t, report); !strings.Contains(got, "Example link available") {
 		t.Fatalf("unexpected visible text: %q", got)
 	}
 }
@@ -170,7 +170,7 @@ func TestRejectsDisallowedLinkScheme(t *testing.T) {
 
 func TestRenderHTMLAltChunk(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[HTML html]]</w:t></w:r></w:p>`))})
-	report, err := CreateReport(context.Background(), template, map[string]any{"html": `<html><body><p dir="rtl">مرحبا</p></body></html>`}, Options{})
+	report, err := CreateReport(context.Background(), template, map[string]any{"html": `<html><body><p>Hello</p></body></html>`}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestRenderHTMLAltChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(pkg.Parts["word/namat-html-1.html"].Data); !strings.Contains(got, "مرحبا") {
+	if got := string(pkg.Parts["word/namat-html-1.html"].Data); !strings.Contains(got, "Hello") {
 		t.Fatalf("unexpected HTML part: %q", got)
 	}
 	if !strings.Contains(string(pkg.Parts["word/document.xml"].Data), "<w:altChunk") {
@@ -191,7 +191,7 @@ func TestRenderHTMLAltChunk(t *testing.T) {
 
 func TestLiteralXMLAndLineBreaks(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[value]]</w:t></w:r></w:p>`))})
-	report, err := CreateReport(context.Background(), template, map[string]any{"value": "أول\nثان||<w:tab/>||ثالث"}, Options{AllowRawXML: true})
+	report, err := CreateReport(context.Background(), template, map[string]any{"value": "first\nsecond||<w:tab/>||third"}, Options{AllowRawXML: true})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestLiteralXMLAndLineBreaks(t *testing.T) {
 
 func TestRawXMLRequiresOptIn(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[RAW-XML xml()]]</w:t></w:r></w:p>`))})
-	options := Options{Functions: map[string]Function{"xml": func(args ...any) (any, error) { return `<w:p><w:r><w:t>خام</w:t></w:r></w:p>`, nil }}}
+	options := Options{Functions: map[string]Function{"xml": func(args ...any) (any, error) { return `<w:p><w:r><w:t>raw</w:t></w:r></w:p>`, nil }}}
 	if _, err := CreateReport(context.Background(), template, nil, options); err == nil || !strings.Contains(err.Error(), "disabled") {
 		t.Fatalf("error = %v, want raw XML opt-in error", err)
 	}
@@ -212,7 +212,7 @@ func TestRawXMLRequiresOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateReport with opt-in: %v", err)
 	}
-	if got := documentText(t, report); !strings.Contains(got, "خام") {
+	if got := documentText(t, report); !strings.Contains(got, "raw") {
 		t.Fatalf("raw XML text missing: %q", got)
 	}
 }
@@ -227,7 +227,7 @@ func TestAliasAndQueryResolver(t *testing.T) {
 			if query != "record by key" {
 				t.Fatalf("query = %q", query)
 			}
-			return map[string]any{"record": map[string]any{"name": "الصحيح"}}, nil
+			return map[string]any{"record": map[string]any{"name": "resolved"}}, nil
 		},
 	})
 	if err != nil {
@@ -237,7 +237,7 @@ func TestAliasAndQueryResolver(t *testing.T) {
 		t.Fatal("query resolver was not called")
 	}
 	text := documentText(t, report)
-	if !strings.Contains(text, "الصحيح") || strings.Contains(text, "ALIAS") || strings.Contains(text, "QUERY") {
+	if !strings.Contains(text, "resolved") || strings.Contains(text, "ALIAS") || strings.Contains(text, "QUERY") {
 		t.Fatalf("unexpected rendered text: %q", text)
 	}
 }

@@ -25,9 +25,16 @@ Versioning beginning with v1.0.
   remain colocated with the Go packages they verify.
 - Public API documentation now describes command constants, rich-content
   fields, and every option.
+- The committed test suite is English and product-neutral, with escaped
+  multilingual cases for Unicode and RTL behavior.
+- A core feature matrix maps every supported capability to automated evidence.
+- CI now runs on Linux, Windows, and macOS with package-specific coverage
+  thresholds.
 
 ### Fixed
 
 - `ListCommands` now honors configured template and ZIP resource limits.
 - `RenderTo` now reports `io.ErrShortWrite` when a writer accepts only part
   of the rendered document.
+- Empty explicit commands and ambiguous `END-FOR` prefixes are rejected
+  instead of being interpreted as insertion expressions.

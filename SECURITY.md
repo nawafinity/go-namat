@@ -2,9 +2,10 @@
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Contact the project
-maintainer privately with the affected version, a minimal reproduction, and the
-expected impact. Avoid including real documents or confidential report data.
+Do not open a public issue for a suspected vulnerability. After publication,
+use GitHub private vulnerability reporting for this repository with the
+affected version, a minimal synthetic reproduction, and the expected impact.
+Avoid including real documents or confidential report data.
 
 ## Template trust model
 

@@ -11,7 +11,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -34,14 +34,22 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          go test -coverprofile=coverage.out .
-          coverage="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
-          awk -v coverage="$coverage" 'BEGIN {
-            if (coverage + 0 < 75) {
-              printf "Library coverage %.1f%% is below 75%%\n", coverage
-              exit 1
-            }
-          }'
+          check_coverage() {
+            package="$1"
+            minimum="$2"
+            profile="$3"
+            go test -coverprofile="$profile" "$package"
+            coverage="$(go tool cover -func="$profile" | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
+            awk -v coverage="$coverage" -v minimum="$minimum" 'BEGIN {
+              if (coverage + 0 < minimum + 0) {
+                printf "Coverage %.1f%% is below %.1f%%\n", coverage, minimum
+                exit 1
+              }
+            }'
+          }
+          check_coverage . 80 coverage-root.out
+          check_coverage ./internal/expr 75 coverage-expr.out
+          check_coverage ./cmd/namat 55 coverage-cli.out
       - name: Reject product-specific test data
         shell: bash
         run: |

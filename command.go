@@ -72,7 +72,7 @@ func parseCommand(raw string) (Command, error) {
 	if strings.HasPrefix(upper, string(CommandElse)+" ") || strings.HasPrefix(upper, string(CommandEndIf)+" ") {
 		return Command{}, fmt.Errorf("%s does not accept arguments", strings.Fields(upper)[0])
 	}
-	if strings.HasPrefix(upper, string(CommandEndFor)) {
+	if upper == string(CommandEndFor) || strings.HasPrefix(upper, string(CommandEndFor)+" ") {
 		variable := strings.TrimPrefix(strings.TrimSpace(trimmed[len(CommandEndFor):]), "$")
 		if variable != "" && !validName(variable) {
 			return Command{}, fmt.Errorf("invalid END-FOR variable %q", variable)
@@ -111,6 +111,9 @@ func parseCommand(raw string) (Command, error) {
 		return Command{Raw: raw, Type: CommandAliasRef, Variable: name}, nil
 	}
 	for _, kind := range []CommandType{CommandInsert, CommandExec, CommandSet, CommandIf, CommandImage, CommandLink, CommandHTML, CommandRawXML, CommandQuery} {
+		if upper == string(kind) {
+			return Command{}, fmt.Errorf("%s requires an expression", kind)
+		}
 		prefix := string(kind) + " "
 		if strings.HasPrefix(upper, prefix) {
 			return Command{Raw: raw, Type: kind, Expression: strings.TrimSpace(trimmed[len(prefix):])}, nil

@@ -9,7 +9,7 @@ import (
 
 func TestRenderInsertAcrossWordRuns(t *testing.T) {
 	document := wordDocument(`<w:p>
-  <w:r><w:t xml:space="preserve">مرحباً </w:t></w:r>
+  <w:r><w:t xml:space="preserve">Hello </w:t></w:r>
   <w:r><w:t>[[INS record.</w:t></w:r>
   <w:r><w:t>name]]</w:t></w:r>
   <w:r><w:t>!</w:t></w:r>
@@ -20,14 +20,14 @@ func TestRenderInsertAcrossWordRuns(t *testing.T) {
 	})
 
 	report, err := CreateReport(context.Background(), template, map[string]any{
-		"record": map[string]any{"name": "قيمة تجريبية"},
+		"record": map[string]any{"name": "Synthetic Value"},
 	}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport returned an error: %v", err)
 	}
 
 	root := parseDocumentPart(t, report)
-	if got, want := textOfParagraph(root.descendants("p")[0]), "مرحباً قيمة تجريبية!"; got != want {
+	if got, want := textOfParagraph(root.descendants("p")[0]), "Hello Synthetic Value!"; got != want {
 		t.Fatalf("paragraph text = %q, want %q", got, want)
 	}
 	if got := readPart(t, report, "word/media/original.bin"); !bytes.Equal(got, []byte{0x00, 0x10, 0xfe, 0xff}) {
@@ -37,21 +37,21 @@ func TestRenderInsertAcrossWordRuns(t *testing.T) {
 
 func TestInsertKeepsCommandRunAtTextBoundary(t *testing.T) {
 	document := wordDocument(`<w:p>
-  <w:r><w:rPr><w:color w:val="0000FF"/></w:rPr><w:t xml:space="preserve">قبل </w:t></w:r>
+  <w:r><w:rPr><w:color w:val="0000FF"/></w:rPr><w:t xml:space="preserve">Before </w:t></w:r>
   <w:r><w:rPr><w:color w:val="FF0000"/></w:rPr><w:t>[[name]]</w:t></w:r>
 </w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 
-	report, err := CreateReport(context.Background(), template, map[string]any{"name": "القيمة"}, Options{})
+	report, err := CreateReport(context.Background(), template, map[string]any{"name": "value"}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport returned an error: %v", err)
 	}
 	root := parseDocumentPart(t, report)
 	runs := root.descendants("r")
-	if got := textOfParagraph(runs[0]); got != "قبل " {
+	if got := textOfParagraph(runs[0]); got != "Before " {
 		t.Fatalf("first run changed to %q", got)
 	}
-	if got := textOfParagraph(runs[1]); got != "القيمة" {
+	if got := textOfParagraph(runs[1]); got != "value" {
 		t.Fatalf("command run text = %q, want inserted value", got)
 	}
 }
@@ -63,14 +63,14 @@ func TestRenderCommandSplitAcrossParagraphs(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 
 	report, err := CreateReport(context.Background(), template, map[string]any{
-		"record": map[string]any{"name": "قيمة تجريبية"},
+		"record": map[string]any{"name": "Synthetic Value"},
 	}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport returned an error: %v", err)
 	}
 
 	text := documentText(t, report)
-	if !strings.Contains(text, "قيمة تجريبية") || strings.Contains(text, "[[") || strings.Contains(text, "]]") {
+	if !strings.Contains(text, "Synthetic Value") || strings.Contains(text, "[[") || strings.Contains(text, "]]") {
 		t.Fatalf("unexpected rendered text: %q", text)
 	}
 }
@@ -78,21 +78,21 @@ func TestRenderCommandSplitAcrossParagraphs(t *testing.T) {
 func TestRenderConditionalWithElse(t *testing.T) {
 	document := wordDocument(`
 <w:p><w:r><w:t>[[IF record.active]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>متاح: [[record.name]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>Available: [[record.name]]</w:t></w:r></w:p>
 <w:p><w:r><w:t>[[ELSE]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>غير متاح</w:t></w:r></w:p>
+<w:p><w:r><w:t>Unavailable</w:t></w:r></w:p>
 <w:p><w:r><w:t>[[END-IF]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 
 	report, err := CreateReport(context.Background(), template, map[string]any{
-		"record": map[string]any{"active": true, "name": "ألف"},
+		"record": map[string]any{"active": true, "name": "Alpha"},
 	}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport returned an error: %v", err)
 	}
 
 	text := documentText(t, report)
-	if !strings.Contains(text, "متاح: ألف") || strings.Contains(text, "غير متاح") || strings.Contains(text, "[[") {
+	if !strings.Contains(text, "Available: Alpha") || strings.Contains(text, "Unavailable") || strings.Contains(text, "[[") {
 		t.Fatalf("unexpected rendered text: %q", text)
 	}
 }
@@ -106,7 +106,7 @@ func TestRenderLoopRepeatsTableRows(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 
 	report, err := CreateReport(context.Background(), template, map[string]any{
-		"records": []map[string]any{{"name": "الأولى"}, {"name": "الثانية"}},
+		"records": []map[string]any{{"name": "First"}, {"name": "Second"}},
 	}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport returned an error: %v", err)
@@ -117,10 +117,10 @@ func TestRenderLoopRepeatsTableRows(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("rendered row count = %d, want 2", len(rows))
 	}
-	if got := textOfParagraph(rows[0].descendants("p")[0]); got != "1 - الأولى" {
+	if got := textOfParagraph(rows[0].descendants("p")[0]); got != "1 - First" {
 		t.Fatalf("first row = %q", got)
 	}
-	if got := textOfParagraph(rows[1].descendants("p")[0]); got != "2 - الثانية" {
+	if got := textOfParagraph(rows[1].descendants("p")[0]); got != "2 - Second" {
 		t.Fatalf("second row = %q", got)
 	}
 }

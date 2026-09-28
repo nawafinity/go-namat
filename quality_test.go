@@ -13,12 +13,12 @@ import (
 )
 
 func TestCustomDelimitersAndSmartQuotes(t *testing.T) {
-	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>{# name == ‘نمط’ ? name : 'x' #}</w:t></w:r></w:p>`))})
-	report, err := CreateReport(context.Background(), template, map[string]any{"name": "نمط"}, Options{OpenDelimiter: "{#", CloseDelimiter: "#}", FixSmartQuotes: true})
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>{# name == ‘Namat’ ? name : 'x' #}</w:t></w:r></w:p>`))})
+	report, err := CreateReport(context.Background(), template, map[string]any{"name": "Namat"}, Options{OpenDelimiter: "{#", CloseDelimiter: "#}", FixSmartQuotes: true})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
-	if got := documentText(t, report); !strings.Contains(got, "نمط") {
+	if got := documentText(t, report); !strings.Contains(got, "Namat") {
 		t.Fatalf("unexpected text: %q", got)
 	}
 }
@@ -28,13 +28,13 @@ func TestErrorHandlerAndRejectNullish(t *testing.T) {
 	report, err := CreateReport(context.Background(), template, nil, Options{
 		RejectNullish: true,
 		ErrorHandler: func(command string, err error) (any, error) {
-			return "غير متاح", nil
+			return "unavailable", nil
 		},
 	})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
-	if got := documentText(t, report); !strings.Contains(got, "غير متاح") {
+	if got := documentText(t, report); !strings.Contains(got, "unavailable") {
 		t.Fatalf("unexpected text: %q", got)
 	}
 }
@@ -72,15 +72,15 @@ func TestNestedConditionsAndLoops(t *testing.T) {
 <w:p><w:r><w:t>[[END-FOR group]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	data := map[string]any{"groups": []any{
-		map[string]any{"visible": true, "name": "أ", "items": []string{"1", "2"}},
-		map[string]any{"visible": false, "name": "ب", "items": []string{"3"}},
+		map[string]any{"visible": true, "name": "group-a", "items": []string{"1", "2"}},
+		map[string]any{"visible": false, "name": "group-b", "items": []string{"3"}},
 	}}
 	report, err := CreateReport(context.Background(), template, data, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
 	text := documentText(t, report)
-	if !strings.Contains(text, "أ") || !strings.Contains(text, "1") || !strings.Contains(text, "2") || strings.Contains(text, "ب") || strings.Contains(text, "3") {
+	if !strings.Contains(text, "group-a") || !strings.Contains(text, "1") || !strings.Contains(text, "2") || strings.Contains(text, "group-b") || strings.Contains(text, "3") {
 		t.Fatalf("unexpected nested output: %q", text)
 	}
 }
@@ -152,7 +152,7 @@ func TestReaderWriterAPIsAndLimits(t *testing.T) {
 		t.Fatalf("CompileReader: %v", err)
 	}
 	var output bytes.Buffer
-	if err := compiled.RenderTo(context.Background(), &output, map[string]any{"name": "نمط"}); err != nil {
+	if err := compiled.RenderTo(context.Background(), &output, map[string]any{"name": "Namat"}); err != nil {
 		t.Fatalf("RenderTo: %v", err)
 	}
 	if _, err := readPackage(output.Bytes()); err != nil {
@@ -191,9 +191,9 @@ func (shortWriter) Write(data []byte) (int, error) {
 func TestTimeoutOption(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[slow()]]</w:t></w:r></w:p>`))})
 	_, err := CreateReport(context.Background(), template, nil, Options{
-		Timeout: time.Nanosecond,
+		Timeout: 10 * time.Millisecond,
 		Functions: map[string]Function{"slow": func(args ...any) (any, error) {
-			time.Sleep(time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			return "done", nil
 		}},
 	})

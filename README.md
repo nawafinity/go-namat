@@ -295,7 +295,11 @@ also opened and rendered with Microsoft Word during local visual QA.
 
 Test fixtures are synthetic and product-neutral. See
 [`docs/TESTING.md`](docs/TESTING.md) for package layout and data-isolation
-rules.
+rules, and [`docs/FEATURE_COVERAGE.md`](docs/FEATURE_COVERAGE.md) for the
+behavioral coverage matrix.
+
+For Unicode, RTL templates, and locale-sensitive host functions, see
+[`docs/INTERNATIONALIZATION.md`](docs/INTERNATIONALIZATION.md).
 
 ## Compatibility
 
