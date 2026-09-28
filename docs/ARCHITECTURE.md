@@ -3,6 +3,20 @@
 Namat is a pure Go library. It does not start a helper process, bundle Node.js,
 or embed a JavaScript engine.
 
+## Package layout
+
+- The module-root `namat` package is a small, stable public facade, preserving
+  the import path `github.com/nawafinity/go-namat`.
+- `internal/engine` owns DOCX package handling, OOXML parsing, compilation,
+  rendering, rich content, and their focused package-private tests.
+- `internal/expr` owns the native expression lexer, parser, and evaluator.
+- `cmd/namat` and `examples/complete` consume only the public facade, providing
+  compile-time evidence that internal details do not leak into consumers.
+
+Go's `internal` boundary prevents applications from importing implementation
+packages directly. This keeps the public API deliberate while allowing the
+engine to evolve without adding unstable packages to the supported surface.
+
 ## Rendering pipeline
 
 1. **Package reader** validates the DOCX ZIP and retains every package part,

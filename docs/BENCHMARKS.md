@@ -6,7 +6,7 @@ This snapshot is a development baseline, not a cross-machine guarantee.
 - Go: 1.24.0 windows amd64
 - CPU: Intel Core i9-13900
 - Fixture: one heading and a 100-row generated table
-- Command: `go test -run '^$' -bench . -benchmem -benchtime=300ms .`
+- Command: `go test -run '^$' -bench . -benchmem -benchtime=300ms ./internal/engine`
 
 | Benchmark | Time | Bytes per operation | Allocations |
 | --- | ---: | ---: | ---: |

@@ -7,23 +7,26 @@ production values.
 ## Layout
 
 Go discovers tests by package and directory. For that reason, Namat keeps test
-files beside the package they exercise:
+files beside the package they exercise while leaving the module root small:
 
-- root `*_test.go` files cover the public package and package-private OOXML
-  behavior;
+- root `*_test.go` files cover the public facade, examples, and repository-wide
+  quality policies;
+- `internal/engine/*_test.go` covers package-private OOXML, rendering, rich
+  content, security, and integration behavior;
 - `internal/expr/*_test.go` covers the native expression engine;
 - `cmd/namat/*_test.go` covers CLI-only behavior;
-- `testdata/fuzz` contains minimized regression inputs produced by Go fuzzing.
+- `internal/engine/testdata/fuzz` contains minimized rendering-engine
+  regression inputs produced by Go fuzzing.
 
 Moving every test into a top-level `tests` directory would create a different
 Go package. That package could exercise the exported API, but it could not
-directly verify package-private parsers, ZIP guards, or CLI helpers. Keeping
-unit tests beside their package preserves focused coverage and follows Go's
-test model.
+directly verify package-private parsers, ZIP guards, or CLI helpers. The
+current layout keeps focused tests beside their implementation without
+cluttering the public package root.
 
-Shared root-package DOCX builders and readers are centralized in
-`test_helpers_test.go`. They compile only during tests and are not part of the
-published library API or consumer binaries.
+Shared engine-test DOCX builders and readers are centralized in
+`internal/engine/test_helpers_test.go`. They compile only during tests and are
+not part of the published library API or consumer binaries.
 
 ## Data policy
 
@@ -47,9 +50,9 @@ go test -race ./...
 go test -run '^$' -bench . -benchmem ./...
 ```
 
-CI requires 100% statement coverage independently for the root library,
-native expression engine, CLI, and complete example. Generate a combined local
-profile with:
+CI requires 100% statement coverage independently for the public facade,
+rendering engine, native expression engine, CLI, and complete example. Generate
+a combined local profile with:
 
 ```bash
 go test -coverprofile=coverage-all.out ./...

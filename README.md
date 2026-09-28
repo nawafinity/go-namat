@@ -296,7 +296,7 @@ For exact behavior and limitations, see the [full compatibility matrix](docs/COM
 
 | Quality gate | Current guarantee |
 | --- | --- |
-| Statement coverage | **100%** independently for the root library, expression engine, CLI, and complete example |
+| Statement coverage | **100%** independently for the public facade, rendering engine, expression engine, CLI, and complete example |
 | Behavioral coverage | Every documented core capability maps to an automated test |
 | Platforms | CI runs on Linux, Windows, and macOS |
 | Concurrency | Race detector plus concurrent rendering tests |
@@ -323,9 +323,11 @@ go-namat/
 ├── cmd/namat/          optional native CLI
 ├── docs/               architecture, compatibility, testing, and performance
 ├── examples/complete/  complete synthetic report example
+├── internal/engine/    private DOCX compiler, renderer, and focused tests
 ├── internal/expr/      native expression lexer, parser, and evaluator
-├── testdata/            minimized synthetic fuzz regressions
-└── *.go                 public API and OOXML rendering engine
+├── namat.go             stable public package facade
+├── types.go             public options, values, commands, and errors
+└── *_test.go            public API examples and repository policy checks
 ```
 
 <a id="documentation"></a>

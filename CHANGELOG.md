@@ -19,6 +19,9 @@ Versioning beginning with v1.0.
 
 ### Changed
 
+- The module root is now a small public facade; DOCX implementation and focused
+  package-private tests live in `internal/engine` without changing the public
+  import path.
 - Test fixtures use synthetic, product-neutral values with an enforced privacy
   policy.
 - Shared DOCX test infrastructure is centralized while package-private tests

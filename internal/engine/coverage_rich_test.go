@@ -1,4 +1,4 @@
-package namat
+package engine
 
 import (
 	"archive/zip"
@@ -43,6 +43,12 @@ func TestImageValueConversionAndValidationEdges(t *testing.T) {
 	valid := Image{Data: []byte{1}, Extension: "PNG", Width: 1, Height: 2}
 	if got, err := imageFromValue(&valid); err != nil || got.Extension != "png" {
 		t.Fatalf("image pointer = %#v, %v", got, err)
+	}
+	withoutThumbnail := imageValue{Data: []byte{1}, Extension: "png", Width: 1, Height: 1}
+	var nilThumbnail *imageValue
+	withoutThumbnail.Thumbnail = nilThumbnail
+	if _, err := imageFromValue(withoutThumbnail); err != nil {
+		t.Fatalf("typed nil thumbnail = %v", err)
 	}
 	jpeg := valid
 	jpeg.Extension = ".JPEG"

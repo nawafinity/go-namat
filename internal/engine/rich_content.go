@@ -1,4 +1,4 @@
-package namat
+package engine
 
 import (
 	"archive/zip"
@@ -80,7 +80,8 @@ func imageFromValue(value any) (Image, error) {
 		Rotation:  numericValue(rotationValue),
 		Caption:   formatValue(captionValue),
 	}
-	if hasThumbnail && thumbnailValue != nil {
+	typedNilThumbnail := thumbnailValue != nil && reflect.ValueOf(thumbnailValue).Kind() == reflect.Pointer && reflect.ValueOf(thumbnailValue).IsNil()
+	if hasThumbnail && thumbnailValue != nil && !typedNilThumbnail {
 		thumbnailDataValue, _ := valueField(thumbnailValue, "data")
 		thumbnailExtensionValue, _ := valueField(thumbnailValue, "extension")
 		thumbnailData, decodeErr := decodeImageData(thumbnailDataValue)

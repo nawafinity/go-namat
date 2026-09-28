@@ -48,13 +48,14 @@ jobs:
             }'
           }
           check_coverage . 100 coverage-root.out
+          check_coverage ./internal/engine 100 coverage-engine.out
           check_coverage ./internal/expr 100 coverage-expr.out
           check_coverage ./cmd/namat 100 coverage-cli.out
           check_coverage ./examples/complete 100 coverage-example.out
       - name: Reject product-specific test data
         shell: bash
         run: |
-          if git grep -n -I -E 'OEG|data\.gov\.sa/oe|ODOE[0-9]+' -- '*_test.go' 'testdata/**'; then
+          if git grep -n -I -E 'OEG|data\.gov\.sa/oe|ODOE[0-9]+' -- '*_test.go' ':(glob)**/testdata/**'; then
             echo 'Product-specific identifiers are not allowed in Namat tests.'
             exit 1
           fi
@@ -68,5 +69,5 @@ jobs:
           go-version-file: go.mod
           cache: false
       - run: go test -race ./...
-      - run: go test -run '^$' -fuzz=FuzzParseCommand -fuzztime=10s .
+      - run: go test -run '^$' -fuzz=FuzzParseCommand -fuzztime=10s ./internal/engine
       - run: go test -run '^$' -fuzz=FuzzCompileAndEvaluate -fuzztime=10s ./internal/expr
