@@ -398,6 +398,7 @@ import "github.com/nawafinity/go-namat"
 | [Performance](docs/PERFORMANCE.md) | Performance model and benchmarking guidance |
 | [Roadmap](docs/ROADMAP.md) | Remaining work toward v1.0 |
 | [Security](SECURITY.md) | Trust model and vulnerability reporting |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards and reporting process |
 | [Changelog](CHANGELOG.md) | Notable project changes |
 
 ## 🗺️ Roadmap
@@ -417,7 +418,8 @@ explicit dependency policy, and stable public surface. Tests must use synthetic
 documents and values only—never customer templates, production data,
 credentials, or confidential material.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md) before submitting a change.
 
 ## 💡 Inspiration
 

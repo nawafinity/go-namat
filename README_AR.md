@@ -396,6 +396,7 @@ import "github.com/nawafinity/go-namat"
 | [Performance](docs/PERFORMANCE.md) | نموذج الأداء وإرشادات القياس |
 | [Roadmap](docs/ROADMAP.md) | الأعمال المتبقية قبل الإصدار 1.0 |
 | [Security](SECURITY.md) | نموذج الثقة والإبلاغ عن الثغرات |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | معايير المجتمع وآلية الإبلاغ |
 | [Changelog](CHANGELOG.md) | التغييرات المهمة في المشروع |
 
 ## 🗺️ خارطة الطريق
@@ -414,7 +415,8 @@ import "github.com/nawafinity/go-namat"
 واستقرار الواجهة العامة. ويجب أن تستخدم الاختبارات مستندات وقيمًا اصطناعية
 فقط، دون قوالب عملاء أو بيانات إنتاج أو بيانات اعتماد أو معلومات سرية.
 
-اقرأ [دليل المساهمة](CONTRIBUTING.md) قبل إرسال أي تغيير.
+اقرأ [دليل المساهمة](CONTRIBUTING.md) و[مدونة السلوك](CODE_OF_CONDUCT.md) قبل
+إرسال أي تغيير.
 
 ## 💡 الإلهام
 

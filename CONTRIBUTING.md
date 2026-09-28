@@ -1,5 +1,8 @@
 # Contributing
 
+By participating in Namat, you agree to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 Changes should remain pure Go and should not add a JavaScript runtime, external
 helper executable, or hidden network dependency.
 
