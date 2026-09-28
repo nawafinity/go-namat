@@ -21,27 +21,48 @@ type ErrorHandler func(command string, err error) (replacement any, returnedErr 
 
 // Options controls compilation and rendering.
 type Options struct {
-	OpenDelimiter        string
-	CloseDelimiter       string
-	LiteralXMLDelimiter  string
-	Functions            map[string]Function
-	QueryResolver        QueryResolver
-	ErrorHandler         ErrorHandler
-	CollectErrors        bool
-	RejectNullish        bool
-	AllowObjectResults   bool
-	FixSmartQuotes       bool
-	DisableLineBreaks    bool
-	AllowRawXML          bool
-	AllowedLinkSchemes   []string
-	MaxIterations        int
-	MaxTemplateBytes     int64
-	MaxPartBytes         int64
+	// OpenDelimiter starts a template command. The default is "[[".
+	OpenDelimiter string
+	// CloseDelimiter ends a template command. The default is "]]".
+	CloseDelimiter string
+	// LiteralXMLDelimiter surrounds trusted OOXML fragments. The default is "||".
+	LiteralXMLDelimiter string
+	// Functions exposes explicitly registered Go functions to expressions.
+	Functions map[string]Function
+	// QueryResolver resolves the optional template-level QUERY command.
+	QueryResolver QueryResolver
+	// ErrorHandler may recover from a failed value command.
+	ErrorHandler ErrorHandler
+	// CollectErrors returns independent compile errors together.
+	CollectErrors bool
+	// RejectNullish rejects nil insertion results instead of writing empty text.
+	RejectNullish bool
+	// AllowObjectResults permits maps and structs to be formatted as text.
+	AllowObjectResults bool
+	// FixSmartQuotes normalizes typographic quotes before parsing expressions.
+	FixSmartQuotes bool
+	// DisableLineBreaks leaves newline characters as text instead of Word breaks.
+	DisableLineBreaks bool
+	// AllowRawXML enables RAW-XML and literal XML delimiters for trusted input.
+	AllowRawXML bool
+	// AllowedLinkSchemes is the allowlist used by LINK commands.
+	AllowedLinkSchemes []string
+	// MaxIterations limits aggregate loop iterations during one render.
+	MaxIterations int
+	// MaxTemplateBytes limits the compressed input template size.
+	MaxTemplateBytes int64
+	// MaxPartBytes limits one uncompressed ZIP part.
+	MaxPartBytes int64
+	// MaxUncompressedBytes limits aggregate uncompressed package content.
 	MaxUncompressedBytes int64
-	MaxPackageParts      int
-	MaxOutputBytes       int64
-	CompressionLevel     int
-	Timeout              time.Duration
+	// MaxPackageParts limits the number of ZIP entries.
+	MaxPackageParts int
+	// MaxOutputBytes limits the final compressed document size.
+	MaxOutputBytes int64
+	// CompressionLevel selects ZIP deflate level 1 through 9.
+	CompressionLevel int
+	// Timeout bounds one render when the parent context has no earlier deadline.
+	Timeout time.Duration
 }
 
 func (o Options) normalized() Options {

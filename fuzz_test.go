@@ -26,7 +26,7 @@ func FuzzReadPackage(f *testing.F) {
 func FuzzRenderCommandText(f *testing.F) {
 	f.Add("name")
 	f.Add("name ?? 'x'")
-	f.Add("agency?.name")
+	f.Add("record?.name")
 	f.Fuzz(func(t *testing.T, expression string) {
 		// Keep fuzz input in an attribute-free text node and escape XML-sensitive
 		// characters so malformed OOXML does not obscure command parser failures.

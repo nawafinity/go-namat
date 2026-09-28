@@ -29,6 +29,26 @@ jobs:
           fi
       - run: go vet ./...
       - run: go test ./...
+      - run: go test -shuffle=on -count=3 ./...
+      - name: Enforce library coverage
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          go test -coverprofile=coverage.out .
+          coverage="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
+          awk -v coverage="$coverage" 'BEGIN {
+            if (coverage + 0 < 75) {
+              printf "Library coverage %.1f%% is below 75%%\n", coverage
+              exit 1
+            }
+          }'
+      - name: Reject product-specific test data
+        shell: bash
+        run: |
+          if git grep -n -I -E 'OEG|data\.gov\.sa/oe|ODOE[0-9]+' -- '*_test.go' 'testdata/**'; then
+            echo 'Product-specific identifiers are not allowed in Namat tests.'
+            exit 1
+          fi
 
   race-and-fuzz:
     runs-on: ubuntu-latest

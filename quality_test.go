@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -170,6 +171,21 @@ func TestReaderWriterAPIsAndLimits(t *testing.T) {
 	if _, err := compiled.Render(context.Background(), map[string]any{"name": "x"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := compiled.RenderTo(context.Background(), shortWriter{}, map[string]any{"name": "x"}); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("RenderTo error = %v, want io.ErrShortWrite", err)
+	}
+	if _, err := ListCommands(template, Options{MaxTemplateBytes: int64(len(template) - 1)}); !errors.Is(err, ErrSecurityLimit) {
+		t.Fatalf("ListCommands error = %v, want security limit", err)
+	}
+}
+
+type shortWriter struct{}
+
+func (shortWriter) Write(data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
+	return len(data) - 1, nil
 }
 
 func TestTimeoutOption(t *testing.T) {
@@ -183,5 +199,44 @@ func TestTimeoutOption(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected timeout")
+	}
+}
+
+func TestCreateReportReaderCommandsAndBuiltins(t *testing.T) {
+	template := testDOCX(t, map[string][]byte{
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[len(items)]] / [[string(value)]]</w:t></w:r></w:p>`)),
+	})
+	report, err := CreateReportReader(context.Background(), bytes.NewReader(template), map[string]any{
+		"items": []string{"a", "b", "c"},
+		"value": 42,
+	}, Options{})
+	if err != nil {
+		t.Fatalf("CreateReportReader: %v", err)
+	}
+	if got := documentText(t, report); !strings.Contains(got, "3 / 42") {
+		t.Fatalf("unexpected built-in function output: %q", got)
+	}
+
+	compiled, err := Compile(template, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := compiled.Commands()
+	if len(commands) != 2 {
+		t.Fatalf("Commands count = %d, want 2", len(commands))
+	}
+	commands[0].Raw = "changed"
+	if compiled.Commands()[0].Raw == "changed" {
+		t.Fatal("Commands returned mutable template state")
+	}
+}
+
+func TestCompileRejectsInvalidAssignment(t *testing.T) {
+	template := testDOCX(t, map[string][]byte{
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[EXEC invalid]]</w:t></w:r></w:p>`)),
+	})
+	_, err := Compile(template, Options{})
+	if err == nil || !errors.Is(err, ErrCommandSyntax) {
+		t.Fatalf("Compile error = %v, want command syntax error", err)
 	}
 }

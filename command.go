@@ -11,29 +11,48 @@ import (
 type CommandType string
 
 const (
-	CommandInsert   CommandType = "INS"
-	CommandExec     CommandType = "EXEC"
-	CommandSet      CommandType = "SET"
-	CommandIf       CommandType = "IF"
-	CommandElse     CommandType = "ELSE"
-	CommandEndIf    CommandType = "END-IF"
-	CommandFor      CommandType = "FOR"
-	CommandEndFor   CommandType = "END-FOR"
-	CommandImage    CommandType = "IMAGE"
-	CommandLink     CommandType = "LINK"
-	CommandHTML     CommandType = "HTML"
-	CommandRawXML   CommandType = "RAW-XML"
-	CommandQuery    CommandType = "QUERY"
-	CommandAlias    CommandType = "ALIAS"
+	// CommandInsert inserts an expression result as text.
+	CommandInsert CommandType = "INS"
+	// CommandExec evaluates an assignment without visible output.
+	CommandExec CommandType = "EXEC"
+	// CommandSet is an explicit assignment command.
+	CommandSet CommandType = "SET"
+	// CommandIf starts a conditional block.
+	CommandIf CommandType = "IF"
+	// CommandElse separates conditional branches.
+	CommandElse CommandType = "ELSE"
+	// CommandEndIf ends a conditional block.
+	CommandEndIf CommandType = "END-IF"
+	// CommandFor starts a collection loop.
+	CommandFor CommandType = "FOR"
+	// CommandEndFor ends a collection loop.
+	CommandEndFor CommandType = "END-FOR"
+	// CommandImage inserts an inline drawing.
+	CommandImage CommandType = "IMAGE"
+	// CommandLink inserts an external hyperlink.
+	CommandLink CommandType = "LINK"
+	// CommandHTML inserts an HTML altChunk in the main document.
+	CommandHTML CommandType = "HTML"
+	// CommandRawXML inserts trusted OOXML when explicitly enabled.
+	CommandRawXML CommandType = "RAW-XML"
+	// CommandQuery asks the host application to resolve root data.
+	CommandQuery CommandType = "QUERY"
+	// CommandAlias defines a reusable command.
+	CommandAlias CommandType = "ALIAS"
+	// CommandAliasRef invokes a previously defined alias.
 	CommandAliasRef CommandType = "ALIAS-REF"
 )
 
 // Command is a parsed command found in a template.
 type Command struct {
-	Raw        string
-	Type       CommandType
+	// Raw is the command text without delimiters.
+	Raw string
+	// Type identifies the parsed command kind.
+	Type CommandType
+	// Expression contains the command expression or query text.
 	Expression string
-	Variable   string
+	// Variable contains a loop variable or alias name when applicable.
+	Variable string
 }
 
 func parseCommand(raw string) (Command, error) {

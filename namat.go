@@ -219,8 +219,14 @@ func (t *Template) RenderTo(ctx context.Context, writer io.Writer, data any) err
 	if err != nil {
 		return err
 	}
-	_, err = writer.Write(report)
-	return err
+	written, err := writer.Write(report)
+	if err != nil {
+		return err
+	}
+	if written != len(report) {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 // Commands returns a copy of all commands in package order.
@@ -234,7 +240,10 @@ func (t *Template) Commands() []Command {
 // ListCommands returns commands in document order from all templated parts.
 func ListCommands(template []byte, options Options) ([]Command, error) {
 	options = options.normalized()
-	pkg, err := readPackage(template)
+	if int64(len(template)) > options.MaxTemplateBytes {
+		return nil, fmt.Errorf("namat: %w: template exceeds MaxTemplateBytes (%d)", ErrSecurityLimit, options.MaxTemplateBytes)
+	}
+	pkg, err := readPackageWithLimits(template, options.MaxPartBytes, options.MaxUncompressedBytes, options.MaxPackageParts)
 	if err != nil {
 		return nil, err
 	}

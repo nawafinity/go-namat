@@ -74,6 +74,28 @@ func TestRenderSVGWithFallbackThumbnail(t *testing.T) {
 	}
 }
 
+func TestRenderImageFromSyntheticObject(t *testing.T) {
+	png := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+	template := testDOCX(t, map[string][]byte{
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[IMAGE image]]</w:t></w:r></w:p>`)),
+	})
+	report, err := CreateReport(context.Background(), template, map[string]any{
+		"image": map[string]any{
+			"data": png, "extension": "png", "width": 2, "height": 1,
+			"alt": "Synthetic image", "rotation": 15, "caption": "Generated fixture",
+		},
+	}, Options{})
+	if err != nil {
+		t.Fatalf("CreateReport: %v", err)
+	}
+	documentXML := string(readPart(t, report, "word/document.xml"))
+	if !strings.Contains(documentXML, `descr="Synthetic image"`) ||
+		!strings.Contains(documentXML, `rot="900000"`) ||
+		!strings.Contains(documentXML, "Generated fixture") {
+		t.Fatalf("image properties are incomplete: %s", documentXML)
+	}
+}
+
 func TestImageInHeaderUsesHeaderRelationshipPart(t *testing.T) {
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 	template := testDOCX(t, map[string][]byte{
@@ -115,7 +137,7 @@ func TestImageDrawingIdentifiersDoNotCollide(t *testing.T) {
 }
 
 func TestRenderInlineLinkFromObjectExpression(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[LINK ({ url: 'https://example.com/report', label: 'التقرير' })]]</w:t></w:r><w:r><w:t xml:space="preserve"> متاح</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[LINK ({ url: 'https://example.com/document', label: 'رابط تجريبي' })]]</w:t></w:r><w:r><w:t xml:space="preserve"> متاح</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	report, err := CreateReport(context.Background(), template, nil, Options{})
 	if err != nil {
@@ -126,14 +148,14 @@ func TestRenderInlineLinkFromObjectExpression(t *testing.T) {
 		t.Fatal(err)
 	}
 	documentXML := string(pkg.Parts["word/document.xml"].Data)
-	if !strings.Contains(documentXML, "<w:hyperlink") || !strings.Contains(documentXML, "التقرير") {
+	if !strings.Contains(documentXML, "<w:hyperlink") || !strings.Contains(documentXML, "رابط تجريبي") {
 		t.Fatalf("hyperlink markup is missing: %s", documentXML)
 	}
 	rels := string(pkg.Parts["word/_rels/document.xml.rels"].Data)
-	if !strings.Contains(rels, `Target="https://example.com/report"`) || !strings.Contains(rels, `TargetMode="External"`) {
+	if !strings.Contains(rels, `Target="https://example.com/document"`) || !strings.Contains(rels, `TargetMode="External"`) {
 		t.Fatalf("external hyperlink relationship is incomplete: %s", rels)
 	}
-	if got := documentText(t, report); !strings.Contains(got, "التقرير متاح") {
+	if got := documentText(t, report); !strings.Contains(got, "رابط تجريبي متاح") {
 		t.Fatalf("unexpected visible text: %q", got)
 	}
 }
@@ -196,16 +218,16 @@ func TestRawXMLRequiresOptIn(t *testing.T) {
 }
 
 func TestAliasAndQueryResolver(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[QUERY agency by id]]</w:t></w:r></w:p><w:p><w:r><w:t>[[ALIAS agencyName INS agency.name]]</w:t></w:r></w:p><w:p><w:r><w:t>[[*agencyName]]</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[QUERY record by key]]</w:t></w:r></w:p><w:p><w:r><w:t>[[ALIAS recordName INS record.name]]</w:t></w:r></w:p><w:p><w:r><w:t>[[*recordName]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	called := false
-	report, err := CreateReport(context.Background(), template, map[string]any{"agency": map[string]any{"name": "wrong"}}, Options{
+	report, err := CreateReport(context.Background(), template, map[string]any{"record": map[string]any{"name": "wrong"}}, Options{
 		QueryResolver: func(ctx context.Context, query string) (any, error) {
 			called = true
-			if query != "agency by id" {
+			if query != "record by key" {
 				t.Fatalf("query = %q", query)
 			}
-			return map[string]any{"agency": map[string]any{"name": "الصحيح"}}, nil
+			return map[string]any{"record": map[string]any{"name": "الصحيح"}}, nil
 		},
 	})
 	if err != nil {

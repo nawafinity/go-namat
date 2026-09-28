@@ -17,20 +17,31 @@ const emuPerCentimeter = 360000.0
 
 // Image describes an inline image returned by an IMAGE expression.
 type Image struct {
-	Data      []byte
+	// Data contains encoded PNG, JPEG, GIF, or SVG bytes.
+	Data []byte
+	// Extension identifies the image format without requiring a leading dot.
 	Extension string
-	Width     float64
-	Height    float64
-	Alt       string
-	Rotation  float64
-	Caption   string
+	// Width is the rendered width in centimeters.
+	Width float64
+	// Height is the rendered height in centimeters.
+	Height float64
+	// Alt is the accessibility description stored in drawing properties.
+	Alt string
+	// Rotation is measured clockwise in degrees.
+	Rotation float64
+	// Caption is optional text emitted below the inline image.
+	Caption string
+	// Thumbnail is an optional raster fallback for an SVG image.
 	Thumbnail *Image
 }
 
 // Link describes an external hyperlink returned by a LINK expression.
 type Link struct {
-	URL     string
-	Label   string
+	// URL is an absolute external URL whose scheme must be allowed by Options.
+	URL string
+	// Label is the visible link text; an empty label falls back to URL.
+	Label string
+	// Tooltip is optional hover text stored in the hyperlink element.
 	Tooltip string
 }
 

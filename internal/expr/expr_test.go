@@ -7,8 +7,8 @@ import (
 
 func TestExpressionLanguage(t *testing.T) {
 	root := map[string]any{
-		"agency": map[string]any{"name": "هيئة البيانات", "score": 91.5},
-		"items":  []any{map[string]any{"name": "API"}},
+		"record": map[string]any{"name": "قيمة عربية", "score": 91.5},
+		"items":  []any{map[string]any{"name": "Item"}},
 	}
 	functions := map[string]Function{
 		"wrap": func(args ...any) (any, error) { return fmt.Sprintf("[%v]", args[0]), nil },
@@ -17,18 +17,18 @@ func TestExpressionLanguage(t *testing.T) {
 		expression string
 		want       any
 	}{
-		{"agency.name", "هيئة البيانات"},
-		{"agency.score >= 90 && agency.score < 100", true},
-		{"items[0].name", "API"},
+		{"record.name", "قيمة عربية"},
+		{"record.score >= 90 && record.score < 100", true},
+		{"items[0].name", "Item"},
 		{"missing?.value ?? 'N/A'", "N/A"},
-		{"wrap(agency.name)", "[هيئة البيانات]"},
-		{"`Score: ${agency.score}`", "Score: 91.5"},
+		{"wrap(record.name)", "[قيمة عربية]"},
+		{"`Score: ${record.score}`", "Score: 91.5"},
 		{"$idx + 1", float64(3)},
-		{"agency.score >= 90 ? 'ممتاز' : 'جيد'", "ممتاز"},
-		{"[agency.name, items[0].name][1]", "API"},
-		{"({ url: 'https://example.com', label: agency.name }).label", "هيئة البيانات"},
-		{"agency.name.slice(0, 4)", "هيئة"},
-		{"agency.name.length > 5", true},
+		{"record.score >= 90 ? 'مرتفع' : 'منخفض'", "مرتفع"},
+		{"[record.name, items[0].name][1]", "Item"},
+		{"({ url: 'https://example.com', label: record.name }).label", "قيمة عربية"},
+		{"record.name.slice(0, 4)", "قيمة"},
+		{"record.name.length > 5", true},
 		{"['أ', 'ب', 'ج'].join('-')", "أ-ب-ج"},
 		{"items.includes(items[0])", true},
 	}
@@ -48,7 +48,7 @@ func TestExpressionLanguage(t *testing.T) {
 }
 
 func TestInvalidExpression(t *testing.T) {
-	if _, err := Compile("agency.[name"); err == nil {
+	if _, err := Compile("record.[name"); err == nil {
 		t.Fatal("expected syntax error")
 	}
 }

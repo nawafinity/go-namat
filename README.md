@@ -293,6 +293,10 @@ metadata, query resolution, aliases, cancellation, resource limits,
 concurrent rendering, fuzz seeds, and benchmarks. A generated Arabic fixture is
 also opened and rendered with Microsoft Word during local visual QA.
 
+Test fixtures are synthetic and product-neutral. See
+[`docs/TESTING.md`](docs/TESTING.md) for package layout and data-isolation
+rules.
+
 ## Compatibility
 
 Namat aims for workflow compatibility with mature DOCX template engines while
