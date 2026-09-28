@@ -1,8 +1,12 @@
 <div align="center" dir="rtl">
 
-<img src="assets/namat-mark.svg" width="120" alt="شعار نَمَط">
-
-# نَمَط · Namat
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.svg">
+    <img src="assets/brand/namat-logo-light.svg" width="360" alt="نَمَط · Namat">
+  </picture>
+</h1>
 
 **محرك قوالب أصيل بلغة Go لمستندات Microsoft Word**
 

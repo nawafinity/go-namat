@@ -1,8 +1,12 @@
 <div align="center">
 
-<img src="assets/namat-mark.svg" width="120" alt="Namat logo">
-
-# Namat · نَمَط
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.svg">
+    <img src="assets/brand/namat-logo-light.svg" width="360" alt="Namat · نَمَط">
+  </picture>
+</h1>
 
 **A native Go template engine for Microsoft Word**
 
