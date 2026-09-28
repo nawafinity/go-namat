@@ -2,9 +2,9 @@
 
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.png">
-    <img src="assets/brand/namat-logo-light.png" width="360" alt="نَمَط · Namat">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.svg">
+    <img src="assets/brand/namat-logo-light.svg" width="360" alt="نَمَط · Namat">
   </picture>
 </h1>
 
@@ -38,7 +38,7 @@
 > قابلة للاستخدام ومغطاة باختبارات دقيقة، وتبدأ ضمانات التوافق وفق الإصدارات
 > الدلالية مع `v1.0`.
 
-<a id="why-namat"></a>
+<a id="why-namat" name="why-namat"></a>
 
 ## ✨ لماذا نَمَط؟
 
@@ -81,7 +81,7 @@
   </tr>
 </table>
 
-<a id="quick-start"></a>
+<a id="quick-start" name="quick-start"></a>
 
 ## 🚀 البداية السريعة
 
@@ -155,7 +155,7 @@ func main() {
 يقدّم المسار [`examples/complete`](examples/complete) مثالًا مستقلًا ينشئ تقريرًا
 عربيًا يتضمن جدولًا وصورة ورابطًا وشروطًا وحلقات.
 
-<a id="template-language"></a>
+<a id="template-language" name="template-language"></a>
 
 ## 🧩 لغة القوالب
 
@@ -382,7 +382,7 @@ go-namat/
 import "github.com/nawafinity/go-namat"
 ```
 
-<a id="documentation"></a>
+<a id="documentation" name="documentation"></a>
 
 ## 📚 التوثيق
 

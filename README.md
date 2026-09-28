@@ -2,9 +2,9 @@
 
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.png">
-    <img src="assets/brand/namat-logo-light.png" width="360" alt="Namat · نَمَط">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.svg">
+    <img src="assets/brand/namat-logo-light.svg" width="360" alt="Namat · نَمَط">
   </picture>
 </h1>
 
@@ -35,6 +35,8 @@ cleanly into services, command-line tools, and desktop applications.
 > Namat is currently **pre-v1**. The core API and template language are usable
 > and thoroughly tested. Semantic-version compatibility guarantees begin with
 > `v1.0`.
+
+<a id="why-namat" name="why-namat"></a>
 
 ## ✨ Why Namat?
 
@@ -76,6 +78,8 @@ cleanly into services, command-line tools, and desktop applications.
     </td>
   </tr>
 </table>
+
+<a id="quick-start" name="quick-start"></a>
 
 ## 🚀 Quick start
 
@@ -148,6 +152,8 @@ func main() {
 
 See [`examples/complete`](examples/complete) for a self-contained Arabic
 report containing a table, image, hyperlink, conditions, and loops.
+
+<a id="template-language" name="template-language"></a>
 
 ## 🧩 Template language
 
@@ -378,7 +384,7 @@ details while keeping the public import path concise:
 import "github.com/nawafinity/go-namat"
 ```
 
-<a id="documentation"></a>
+<a id="documentation" name="documentation"></a>
 
 ## 📚 Documentation
 
