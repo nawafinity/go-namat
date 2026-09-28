@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title description">
-  <title id="title">Namat mark</title>
-  <desc id="description">A folded document containing a modular geometric pattern</desc>
-  <path d="M36 18h60l28 28v84c0 7.732-6.268 14-14 14H36c-7.732 0-14-6.268-14-14V32c0-7.732 6.268-14 14-14Z" fill="#0F2744"/>
-  <path d="M96 18v22c0 5.523 4.477 10 10 10h18L96 18Z" fill="#22C7B8"/>
-  <path d="M46 68a9 9 0 0 1 9-9h18v14H61v12H46V68Zm68 0a9 9 0 0 0-9-9H87v14h12v12h15V68ZM46 112a9 9 0 0 0 9 9h18v-14H61V95H46v17Zm68 0a9 9 0 0 1-9 9H87v-14h12V95h15v17Z" fill="#22C7B8"/>
-  <path d="m80 69 5.2 7.8L94 80l-8.8 3.2L80 91l-5.2-7.8L66 80l8.8-3.2L80 69Z" fill="#F5B942"/>
-</svg>

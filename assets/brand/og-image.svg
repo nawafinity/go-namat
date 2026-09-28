@@ -1,45 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 640" role="img" aria-labelledby="title description">
   <title id="title">Namat social preview</title>
   <desc id="description">Namat logo with the message Native Go templates for Word</desc>
   <defs>
-    <linearGradient id="background" x1="90" y1="42" x2="1188" y2="598" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#101F36"/>
+    <linearGradient id="background" x1="78" y1="40" x2="1202" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#102846"/>
       <stop offset="1" stop-color="#07111F"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(282 322) rotate(4) scale(385 368)" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#22C7B8" stop-opacity=".16"/>
-      <stop offset="1" stop-color="#22C7B8" stop-opacity="0"/>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(235 315) rotate(8) scale(430 405)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00B6C2" stop-opacity=".15"/>
+      <stop offset="1" stop-color="#00B6C2" stop-opacity="0"/>
     </radialGradient>
-    <pattern id="pattern" width="72" height="72" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <path d="M0 36h72M36 0v72" stroke="#A7F3D0" stroke-opacity=".045" stroke-width="1"/>
+    <pattern id="pattern" width="80" height="80" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <path d="M0 40h80M40 0v80" fill="none" stroke="#9ADFE3" stroke-opacity=".04"/>
     </pattern>
   </defs>
   <rect width="1280" height="640" rx="32" fill="url(#background)"/>
   <rect width="1280" height="640" rx="32" fill="url(#glow)"/>
-  <rect x="24" y="24" width="1232" height="592" rx="22" fill="none" stroke="#FFFFFF" stroke-opacity=".07"/>
   <rect width="1280" height="640" rx="32" fill="url(#pattern)"/>
+  <rect x="24" y="24" width="1232" height="592" rx="22" fill="none" stroke="#FFFFFF" stroke-opacity=".07"/>
 
-  <g transform="translate(100 150) scale(2.12)">
-    <path d="M36 18h60l28 28v84c0 7.732-6.268 14-14 14H36c-7.732 0-14-6.268-14-14V32c0-7.732 6.268-14 14-14Z" fill="#F8FAFC"/>
-    <path d="M96 18v22c0 5.523 4.477 10 10 10h18L96 18Z" fill="#22C7B8"/>
-    <path d="M46 68a9 9 0 0 1 9-9h18v14H61v12H46V68Zm68 0a9 9 0 0 0-9-9H87v14h12v12h15V68ZM46 112a9 9 0 0 0 9 9h18v-14H61V95H46v17Zm68 0a9 9 0 0 1-9 9H87v-14h12V95h15v17Z" fill="#22C7B8"/>
-    <path d="m80 69 5.2 7.8L94 80l-8.8 3.2L80 91l-5.2-7.8L66 80l8.8-3.2L80 69Z" fill="#F5B942"/>
-  </g>
-
-  <g transform="translate(405 154) scale(1.38)" fill="none" stroke="#F8FAFC" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M20 108V74c0-15 10-24 23-24 14 0 23 10 23 25v33"/>
-    <path d="M123 80c0-17-11-29-27-29S69 63 69 80s11 29 27 29 27-12 27-29Zm0-29v57"/>
-    <path d="M147 108V73c0-14 9-22 20-22s20 8 20 22v35m0-35c0-14 9-22 20-22s20 8 20 22v35"/>
-    <path d="M284 80c0-17-11-29-27-29s-27 12-27 29 11 29 27 29 27-12 27-29Zm0-29v57"/>
-    <path d="M320 35v55c0 12 7 19 19 19m-35-56h36"/>
-  </g>
-
-  <text x="430" y="380" fill="#A8B8CC" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="500" letter-spacing=".4">Native Go templates for Word</text>
-  <g transform="translate(430 424)">
-    <rect width="118" height="46" rx="23" fill="#22C7B8" fill-opacity=".12" stroke="#22C7B8" stroke-opacity=".38"/>
-    <text x="59" y="30" text-anchor="middle" fill="#69E5D8" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" letter-spacing="2">PURE GO</text>
-    <circle cx="148" cy="23" r="4" fill="#F5B942"/>
-    <text x="168" y="30" fill="#A8B8CC" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="500">DOCX · DOCM · OOXML</text>
-  </g>
-  <text x="1180" y="558" text-anchor="end" fill="#68809D" font-family="Arial, Helvetica, sans-serif" font-size="18" letter-spacing=".6">github.com/nawafinity/go-namat</text>
+  <image href="namat-logo-dark.png" xlink:href="namat-logo-dark.png" x="110" y="104" width="1060" height="326" preserveAspectRatio="xMidYMid meet"/>
+  <text x="640" y="490" text-anchor="middle" fill="#BAC7D8" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="500" letter-spacing=".5">Native Go templates for Word</text>
+  <circle cx="496" cy="550" r="4" fill="#FEC33A"/>
+  <text x="516" y="557" fill="#6FE1E6" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" letter-spacing="1.8">PURE GO</text>
+  <circle cx="644" cy="550" r="4" fill="#FEC33A"/>
+  <text x="664" y="557" fill="#8FA5BF" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="500">DOCX · DOCM · OOXML</text>
 </svg>

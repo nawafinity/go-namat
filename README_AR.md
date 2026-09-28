@@ -2,9 +2,9 @@
 
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.svg">
-    <img src="assets/brand/namat-logo-light.svg" width="360" alt="نَمَط · Namat">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/namat-logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/brand/namat-logo-light.png">
+    <img src="assets/brand/namat-logo-light.png" width="360" alt="نَمَط · Namat">
   </picture>
 </h1>
 
