@@ -32,7 +32,7 @@ cleanly into services, command-line tools, and desktop applications.
 > and thoroughly tested. Semantic-version compatibility guarantees begin with
 > `v1.0`.
 
-## Why Namat?
+## ✨ Why Namat?
 
 <table>
   <tr>
@@ -73,7 +73,7 @@ cleanly into services, command-line tools, and desktop applications.
   </tr>
 </table>
 
-## Quick start
+## 🚀 Quick start
 
 ### Install
 
@@ -145,7 +145,7 @@ func main() {
 See [`examples/complete`](examples/complete) for a self-contained Arabic
 report containing a table, image, hyperlink, conditions, and loops.
 
-## Template language
+## 🧩 Template language
 
 Commands use `[[` and `]]` by default. Both delimiters are configurable through
 `Options`.
@@ -192,7 +192,7 @@ Loop variables use the `$` prefix, and `$idx` is zero-based. Registered Go
 functions are the native replacement for JavaScript helpers: they can be unit
 tested, profiled, and audited like ordinary Go code.
 
-## Rich content
+## 🖼️ Rich content
 
 ### Images
 
@@ -230,7 +230,7 @@ and document previews.
 options := namat.Options{AllowRawXML: true}
 ```
 
-## Library API
+## 🧰 Library API
 
 ### Readers and writers
 
@@ -270,7 +270,7 @@ options := namat.Options{
 Namat does not interpret SQL, GraphQL, or another query language, and it never
 opens a network connection itself.
 
-## Command-line interface
+## 💻 Command-line interface
 
 The optional CLI is built on the same public package:
 
@@ -288,7 +288,7 @@ It writes through an atomic temporary-file rename.
 go build -trimpath -ldflags="-s -w" ./cmd/namat
 ```
 
-## Safety model
+## 🛡️ Safety model
 
 Templates can access only the data supplied to `Render` and the Go functions
 explicitly registered by the host application. They receive no implicit access
@@ -309,7 +309,7 @@ The package reader rejects traversal paths, duplicate entries, oversized
 parts, and invalid packages. Read the [security policy](SECURITY.md) before
 accepting templates from untrusted users.
 
-## Compatibility
+## 🔄 Compatibility
 
 | Capability | Status | Notes |
 | --- | --- | --- |
@@ -328,7 +328,7 @@ accepting templates from untrusted users.
 See the [full compatibility matrix](docs/COMPATIBILITY.md) for exact behavior
 and limitations.
 
-## Quality and performance
+## 📊 Quality and performance
 
 | Quality gate | Current guarantee |
 | --- | --- |
@@ -351,7 +351,7 @@ For high-throughput workloads, compile each template once and reuse the
 immutable `Template` across goroutines. See the [performance guide](docs/PERFORMANCE.md)
 and the dated [benchmark baseline](docs/BENCHMARKS.md).
 
-## Repository structure
+## 🏗️ Repository structure
 
 ```text
 go-namat/
@@ -376,7 +376,7 @@ import "github.com/nawafinity/go-namat"
 
 <a id="documentation"></a>
 
-## Documentation
+## 📚 Documentation
 
 | Document | Contents |
 | --- | --- |
@@ -390,7 +390,7 @@ import "github.com/nawafinity/go-namat"
 | [Security](SECURITY.md) | Trust model and vulnerability reporting |
 | [Changelog](CHANGELOG.md) | Notable project changes |
 
-## Roadmap
+## 🗺️ Roadmap
 
 The native text engine, rich-content support, authoring compatibility, and
 production-hardening foundations are complete. Remaining pre-v1 work focuses
@@ -400,7 +400,7 @@ and signed CLI releases.
 Product-specific integrations and migrations intentionally live outside this
 standalone repository. See the detailed [roadmap](docs/ROADMAP.md).
 
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome when they preserve the focused Go architecture,
 explicit dependency policy, and stable public surface. Tests must use synthetic
@@ -409,14 +409,14 @@ credentials, or confidential material.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change.
 
-## Inspiration
+## 💡 Inspiration
 
 Namat is inspired by the natural, Word-first authoring model of
 [docx-templates](https://github.com/guigrpa/docx-templates). It reimagines that
 workflow around Go's type system, concurrency model, and deployment strengths,
 with its own expression engine, OOXML pipeline, API, and safety controls.
 
-## The name
+## 🏷️ The name
 
 **Namat (نَمَط)** is the Arabic word for a pattern, mode, or template. It
 describes the library directly and remains short in Go imports.
@@ -424,7 +424,7 @@ describes the library directly and remains short in Go imports.
 The mark pairs a folded document with interlocking geometric forms: a visual
 shorthand for structured templates becoming finished reports.
 
-## License
+## 📄 License
 
 Namat is available under the [MIT License](LICENSE).
 
