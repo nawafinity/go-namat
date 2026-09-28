@@ -1,4 +1,4 @@
-package tiraz
+package namat
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/tiraz-go/tiraz/internal/expr"
+	"github.com/nawafinity/go-namat/internal/expr"
 )
 
 type renderState struct {

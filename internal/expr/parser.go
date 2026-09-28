@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-// Program is a compiled Tiraz expression.
+// Program is a compiled Namat expression.
 type Program struct {
 	source string
 	root   node
@@ -23,7 +23,7 @@ func Compile(source string) (*Program, error) {
 		return nil, err
 	}
 	if tok := p.peek(); tok.kind != tokenEOF {
-		return nil, fmt.Errorf("tiraz expression: unexpected token %s", tok)
+		return nil, fmt.Errorf("namat expression: unexpected token %s", tok)
 	}
 	return &Program{source: source, root: root}, nil
 }
@@ -80,7 +80,7 @@ func (p *parser) parsePostfix() (node, error) {
 			optional := p.next().kind == tokenOptionalDot
 			name := p.next()
 			if name.kind != tokenIdentifier {
-				return nil, fmt.Errorf("tiraz expression: expected property name at byte %d", name.pos)
+				return nil, fmt.Errorf("namat expression: expected property name at byte %d", name.pos)
 			}
 			value = memberNode{target: value, key: literalNode{value: name.text}, optional: optional}
 		case tokenLBracket:
@@ -90,7 +90,7 @@ func (p *parser) parsePostfix() (node, error) {
 				return nil, err
 			}
 			if tok := p.next(); tok.kind != tokenRBracket {
-				return nil, fmt.Errorf("tiraz expression: expected ] at byte %d", tok.pos)
+				return nil, fmt.Errorf("namat expression: expected ] at byte %d", tok.pos)
 			}
 			value = memberNode{target: value, key: index}
 		case tokenLParen:
@@ -110,7 +110,7 @@ func (p *parser) parsePostfix() (node, error) {
 				}
 			}
 			if tok := p.next(); tok.kind != tokenRParen {
-				return nil, fmt.Errorf("tiraz expression: expected ) at byte %d", tok.pos)
+				return nil, fmt.Errorf("namat expression: expected ) at byte %d", tok.pos)
 			}
 			value = callNode{callee: value, args: args}
 		default:
@@ -146,11 +146,11 @@ func (p *parser) parsePrimary() (node, error) {
 			return nil, err
 		}
 		if close := p.next(); close.kind != tokenRParen {
-			return nil, fmt.Errorf("tiraz expression: expected ) at byte %d", close.pos)
+			return nil, fmt.Errorf("namat expression: expected ) at byte %d", close.pos)
 		}
 		return value, nil
 	default:
-		return nil, fmt.Errorf("tiraz expression: expected value at byte %d", tok.pos)
+		return nil, fmt.Errorf("namat expression: expected value at byte %d", tok.pos)
 	}
 }
 

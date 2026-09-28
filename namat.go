@@ -1,6 +1,6 @@
-// Package tiraz renders data into Microsoft Word DOCX templates using a pure
+// Package namat renders data into Microsoft Word DOCX templates using a pure
 // Go engine and a bounded expression language.
-package tiraz
+package namat
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tiraz-go/tiraz/internal/expr"
+	"github.com/nawafinity/go-namat/internal/expr"
 )
 
 // Template is an immutable compiled DOCX template. It is safe to render from
@@ -26,7 +26,7 @@ type Template struct {
 func Compile(template []byte, options Options) (*Template, error) {
 	options = options.normalized()
 	if options.OpenDelimiter == options.CloseDelimiter {
-		return nil, fmt.Errorf("tiraz: open and close delimiters must differ")
+		return nil, fmt.Errorf("namat: open and close delimiters must differ")
 	}
 	pkg, err := readPackage(template)
 	if err != nil {

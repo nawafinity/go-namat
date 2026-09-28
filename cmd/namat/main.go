@@ -1,4 +1,4 @@
-// Command tiraz provides local utilities for validating DOCX templates.
+// Command namat provides local utilities for validating DOCX templates.
 package main
 
 import (
@@ -7,7 +7,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/tiraz-go/tiraz"
+	"github.com/nawafinity/go-namat"
 )
 
 func main() {
@@ -21,14 +21,14 @@ func main() {
 	case "help", "-h", "--help":
 		usage()
 	default:
-		fmt.Fprintln(os.Stderr, "tiraz: unknown command")
+		fmt.Fprintln(os.Stderr, "namat: unknown command")
 		usage()
 		os.Exit(2)
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: tiraz inspect [--details] template.docx")
+	fmt.Fprintln(os.Stderr, "usage: namat inspect [--details] template.docx")
 }
 
 func inspect(args []string) {
@@ -45,17 +45,17 @@ func inspect(args []string) {
 
 	content, err := os.ReadFile(flags.Arg(0))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "tiraz: cannot read template")
+		fmt.Fprintln(os.Stderr, "namat: cannot read template")
 		if *details {
 			fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(1)
 	}
-	commands, err := tiraz.ListCommands(content, tiraz.Options{})
+	commands, err := namat.ListCommands(content, namat.Options{})
 	if err != nil {
 		validationFailure(err, *details)
 	}
-	if _, err := tiraz.Compile(content, tiraz.Options{}); err != nil {
+	if _, err := namat.Compile(content, namat.Options{}); err != nil {
 		validationFailure(err, *details)
 	}
 
@@ -76,7 +76,7 @@ func inspect(args []string) {
 }
 
 func validationFailure(err error, details bool) {
-	fmt.Fprintln(os.Stderr, "tiraz: template validation failed")
+	fmt.Fprintln(os.Stderr, "namat: template validation failed")
 	if details {
 		fmt.Fprintln(os.Stderr, err)
 	}

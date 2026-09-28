@@ -1,11 +1,11 @@
-# Tiraz
+# Namat
 
-Tiraz is a pure Go template engine for Microsoft Word DOCX files. It renders
+Namat is a pure Go template engine for Microsoft Word DOCX files. It renders
 data into documents while preserving the original Word package, styles,
 relationships, media, headers, and footers.
 
 The project does not embed Node.js or a JavaScript runtime. Template
-expressions are parsed and evaluated by Tiraz itself.
+expressions are parsed and evaluated by Namat itself.
 
 > Status: pre-v1 development. Text insertion, assignments, conditions, loops,
 > split Word runs, and package round trips are implemented. The public API may
@@ -53,7 +53,7 @@ and null coalescing.
 ## Go API
 
 ```go
-template, err := tiraz.Compile(templateBytes, tiraz.Options{})
+template, err := namat.Compile(templateBytes, namat.Options{})
 if err != nil {
     return err
 }
@@ -65,8 +65,8 @@ Host functions can expose application-specific formatting and lookup logic
 without embedding a scripting runtime:
 
 ```go
-options := tiraz.Options{
-    Functions: map[string]tiraz.Function{
+options := namat.Options{
+    Functions: map[string]namat.Function{
         "money": func(args ...any) (any, error) {
             return formatMoney(args[0]), nil
         },
@@ -80,7 +80,7 @@ The optional CLI validates templates without printing their expressions by
 default:
 
 ```text
-go run ./cmd/tiraz inspect template.docx
+go run ./cmd/namat inspect template.docx
 ```
 
 Pass `--details` only when template expressions are safe to display.
@@ -108,9 +108,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 
 ## Name
 
-Tiraz (طِراز) is an Arabic word associated with decorated textile, style, and
-craftsmanship. The name reflects weaving structured data into a finished
-document.
+Namat (نَمَط) is the Arabic word for a pattern, mode, or template. The name
+reflects the library's purpose while remaining short and recognizable in Go
+package names.
 
 ## License
 

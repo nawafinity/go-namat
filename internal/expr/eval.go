@@ -22,7 +22,7 @@ type Context struct {
 // Eval evaluates a compiled expression.
 func (p *Program) Eval(ctx *Context) (any, error) {
 	if p == nil || p.root == nil {
-		return nil, errors.New("tiraz expression: empty program")
+		return nil, errors.New("namat expression: empty program")
 	}
 	if ctx == nil {
 		ctx = &Context{}
@@ -43,7 +43,7 @@ type identifierNode struct{ name string }
 type unknownIdentifierError struct{ name string }
 
 func (e unknownIdentifierError) Error() string {
-	return fmt.Sprintf("tiraz expression: unknown identifier %q", e.name)
+	return fmt.Sprintf("namat expression: unknown identifier %q", e.name)
 }
 
 func (n identifierNode) eval(ctx *Context) (any, error) {
@@ -83,7 +83,7 @@ func (n memberNode) eval(ctx *Context) (any, error) {
 		if n.optional {
 			return nil, nil
 		}
-		return nil, errors.New("tiraz expression: cannot access a property of null")
+		return nil, errors.New("namat expression: cannot access a property of null")
 	}
 	key, err := n.key.eval(ctx)
 	if err != nil {
@@ -94,7 +94,7 @@ func (n memberNode) eval(ctx *Context) (any, error) {
 		if n.optional {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("tiraz expression: property %v not found", key)
+		return nil, fmt.Errorf("namat expression: property %v not found", key)
 	}
 	return value, nil
 }
@@ -138,17 +138,17 @@ func (n unaryNode) eval(ctx *Context) (any, error) {
 	case "-":
 		number, ok := number(value)
 		if !ok {
-			return nil, fmt.Errorf("tiraz expression: unary - expects a number, got %T", value)
+			return nil, fmt.Errorf("namat expression: unary - expects a number, got %T", value)
 		}
 		return -number, nil
 	case "+":
 		number, ok := number(value)
 		if !ok {
-			return nil, fmt.Errorf("tiraz expression: unary + expects a number, got %T", value)
+			return nil, fmt.Errorf("namat expression: unary + expects a number, got %T", value)
 		}
 		return number, nil
 	default:
-		return nil, fmt.Errorf("tiraz expression: unsupported unary operator %q", n.op)
+		return nil, fmt.Errorf("namat expression: unsupported unary operator %q", n.op)
 	}
 }
 
@@ -194,7 +194,7 @@ func (n binaryNode) eval(ctx *Context) (any, error) {
 		l, lok := number(left)
 		r, rok := number(right)
 		if !lok || !rok {
-			return nil, fmt.Errorf("tiraz expression: %s expects numbers", n.op)
+			return nil, fmt.Errorf("namat expression: %s expects numbers", n.op)
 		}
 		switch n.op {
 		case "-":
@@ -203,12 +203,12 @@ func (n binaryNode) eval(ctx *Context) (any, error) {
 			return l * r, nil
 		case "/":
 			if r == 0 {
-				return nil, errors.New("tiraz expression: division by zero")
+				return nil, errors.New("namat expression: division by zero")
 			}
 			return l / r, nil
 		default:
 			if r == 0 {
-				return nil, errors.New("tiraz expression: modulo by zero")
+				return nil, errors.New("namat expression: modulo by zero")
 			}
 			return math.Mod(l, r), nil
 		}
@@ -219,7 +219,7 @@ func (n binaryNode) eval(ctx *Context) (any, error) {
 	case ">", ">=", "<", "<=":
 		return compare(n.op, left, right)
 	default:
-		return nil, fmt.Errorf("tiraz expression: unsupported operator %q", n.op)
+		return nil, fmt.Errorf("namat expression: unsupported operator %q", n.op)
 	}
 }
 
@@ -282,7 +282,7 @@ func findTemplateEnd(text string, start int) (int, error) {
 			depth--
 		}
 	}
-	return 0, errors.New("tiraz expression: unterminated template interpolation")
+	return 0, errors.New("namat expression: unterminated template interpolation")
 }
 
 func lookup(target any, key any) (any, bool) {
@@ -344,7 +344,7 @@ func lookup(target any, key any) (any, bool) {
 func callReflect(callee any, args []any) (any, error) {
 	v := reflect.ValueOf(callee)
 	if !v.IsValid() || v.Kind() != reflect.Func {
-		return nil, fmt.Errorf("tiraz expression: %T is not callable", callee)
+		return nil, fmt.Errorf("namat expression: %T is not callable", callee)
 	}
 	t := v.Type()
 	minimum := t.NumIn()
@@ -352,7 +352,7 @@ func callReflect(callee any, args []any) (any, error) {
 		minimum--
 	}
 	if (!t.IsVariadic() && len(args) != t.NumIn()) || (t.IsVariadic() && len(args) < minimum) {
-		return nil, fmt.Errorf("tiraz expression: function expects %d arguments, got %d", t.NumIn(), len(args))
+		return nil, fmt.Errorf("namat expression: function expects %d arguments, got %d", t.NumIn(), len(args))
 	}
 	values := make([]reflect.Value, len(args))
 	for i, arg := range args {
@@ -372,7 +372,7 @@ func callReflect(callee any, args []any) (any, error) {
 		} else if value.Type().ConvertibleTo(parameter) {
 			values[i] = value.Convert(parameter)
 		} else {
-			return nil, fmt.Errorf("tiraz expression: argument %d has type %T, expected %s", i+1, arg, parameter)
+			return nil, fmt.Errorf("namat expression: argument %d has type %T, expected %s", i+1, arg, parameter)
 		}
 	}
 	results := v.Call(values)
@@ -481,7 +481,7 @@ func compare(op string, left, right any) (bool, error) {
 	case "<=":
 		return l <= r, nil
 	default:
-		return false, fmt.Errorf("tiraz expression: unsupported comparison %q", op)
+		return false, fmt.Errorf("namat expression: unsupported comparison %q", op)
 	}
 }
 

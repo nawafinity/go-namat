@@ -1,4 +1,4 @@
-package tiraz
+package namat
 
 import (
 	"bytes"

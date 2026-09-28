@@ -1,11 +1,11 @@
-package tiraz
+package namat
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	"github.com/tiraz-go/tiraz/internal/expr"
+	"github.com/nawafinity/go-namat/internal/expr"
 )
 
 // Function is a host function exposed to template expressions.

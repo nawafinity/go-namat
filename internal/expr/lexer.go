@@ -86,7 +86,7 @@ func (l *lexer) next() (token, error) {
 			return token{kind: kind, text: op, pos: start}, nil
 		}
 	}
-	return token{}, fmt.Errorf("tiraz expression: unexpected character %q at byte %d", r, start)
+	return token{}, fmt.Errorf("namat expression: unexpected character %q at byte %d", r, start)
 }
 
 func (l *lexer) number() (token, error) {
@@ -107,7 +107,7 @@ func (l *lexer) number() (token, error) {
 	}
 	text := l.source[start:l.pos]
 	if _, err := strconv.ParseFloat(text, 64); err != nil {
-		return token{}, fmt.Errorf("tiraz expression: invalid number %q at byte %d", text, start)
+		return token{}, fmt.Errorf("namat expression: invalid number %q at byte %d", text, start)
 	}
 	return token{kind: tokenNumber, text: text, pos: start}, nil
 }
@@ -145,7 +145,7 @@ func (l *lexer) quoted(quote byte, kind tokenKind) (token, error) {
 		}
 		b.WriteByte(ch)
 	}
-	return token{}, fmt.Errorf("tiraz expression: unterminated string at byte %d", start)
+	return token{}, fmt.Errorf("namat expression: unterminated string at byte %d", start)
 }
 
 func (l *lexer) skipSpace() {

@@ -1,4 +1,4 @@
-package tiraz
+package namat
 
 import "fmt"
 
@@ -12,11 +12,11 @@ type Error struct {
 func (e *Error) Error() string {
 	switch {
 	case e.Part != "" && e.Command != "":
-		return fmt.Sprintf("tiraz: %s: command %q: %v", e.Part, e.Command, e.Err)
+		return fmt.Sprintf("namat: %s: command %q: %v", e.Part, e.Command, e.Err)
 	case e.Part != "":
-		return fmt.Sprintf("tiraz: %s: %v", e.Part, e.Err)
+		return fmt.Sprintf("namat: %s: %v", e.Part, e.Err)
 	default:
-		return fmt.Sprintf("tiraz: %v", e.Err)
+		return fmt.Sprintf("namat: %v", e.Err)
 	}
 }
 

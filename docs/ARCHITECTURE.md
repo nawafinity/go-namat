@@ -1,6 +1,6 @@
-# Tiraz architecture
+# Namat architecture
 
-Tiraz is a pure Go library. It does not start a helper process, bundle Node.js,
+Namat is a pure Go library. It does not start a helper process, bundle Node.js,
 or embed a JavaScript engine.
 
 ## Rendering pipeline
@@ -32,7 +32,7 @@ variable, and XML copies.
 
 ## Compatibility approach
 
-Tiraz aims for behavioral compatibility with established DOCX template
+Namat aims for behavioral compatibility with established DOCX template
 workflows, not an embedded JavaScript compatibility layer. Familiar expression
 syntax such as property access, optional chaining, null coalescing, comparisons,
 template strings, and `$` loop variables is parsed directly by Go code.

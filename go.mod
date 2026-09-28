@@ -1,3 +1,3 @@
-module github.com/tiraz-go/tiraz
+module github.com/nawafinity/go-namat
 
 go 1.23.0
