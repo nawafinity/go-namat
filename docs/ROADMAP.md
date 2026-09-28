@@ -37,9 +37,6 @@
 - [ ] semantic-versioned API and migration guide
 - [ ] signed releases for the optional CLI
 
-## M5 — application migration
-
-- [ ] port existing report helper functions to typed Go
-- [ ] run old and new engines against the same approved test fixtures
-- [ ] compare document text, tables, media, and relationships automatically
-- [ ] switch production only after calculation and report parity is proven
+Application-specific integrations and migrations intentionally live in their
+own product repositories. They are outside the scope of the standalone Namat
+library roadmap.
