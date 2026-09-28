@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="namat-title namat-desc">
+  <title id="namat-title">Namat symbol</title>
+  <desc id="namat-desc">A modular Arabic noon: Two mirrored corner forms frame a jade diamond, expressing a pattern assembled into a whole. Porcelain ink for dark backgrounds.</desc>
+  <g transform="translate(8 8)">
+  <g id="symbol">
+    <path fill="#EEF8F5" d="M12 34h24v30c0 8.84 7.16 16 16 16v24c-22.09 0-40-17.91-40-40V34Z"/>
+    <path fill="#EEF8F5" d="M100 34H76v30c0 8.84-7.16 16-16 16v24c22.09 0 40-17.91 40-40V34Z"/>
+    <path fill="#18B99A" d="m53.17 4.83-10.34 10.34a4 4 0 0 0 0 5.66l10.34 10.34a4 4 0 0 0 5.66 0l10.34-10.34a4 4 0 0 0 0-5.66L58.83 4.83a4 4 0 0 0-5.66 0Z"/>
+  </g>
+  </g>
+</svg>
