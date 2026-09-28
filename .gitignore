@@ -1,0 +1,6 @@
+/bin/
+/dist/
+/.idea/
+/coverage.out
+*.tmp
+*.log
