@@ -20,8 +20,7 @@ func main() {
 	if len(os.Args) > 1 {
 		output = os.Args[1]
 	}
-	template, err := templateDOCX()
-	check(err)
+	template := templateDOCX()
 	report, err := namat.CreateReport(context.Background(), template, map[string]any{
 		"title":       "تقرير جودة مكتبة نمط",
 		"description": "تقرير تجريبي مولد بالكامل بمحرك Go أصلي",
@@ -42,7 +41,7 @@ func main() {
 	fmt.Println(output)
 }
 
-func templateDOCX() ([]byte, error) {
+func templateDOCX() []byte {
 	parts := map[string]string{
 		"[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
 		"_rels/.rels":         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
@@ -67,18 +66,11 @@ func templateDOCX() ([]byte, error) {
 	var out bytes.Buffer
 	writer := zip.NewWriter(&out)
 	for _, name := range []string{"[Content_Types].xml", "_rels/.rels", "word/document.xml"} {
-		stream, err := writer.Create(name)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := stream.Write([]byte(parts[name])); err != nil {
-			return nil, err
-		}
+		stream, _ := writer.Create(name)
+		_, _ = stream.Write([]byte(parts[name]))
 	}
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
+	_ = writer.Close()
+	return out.Bytes()
 }
 
 func bannerPNG() []byte {

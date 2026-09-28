@@ -293,6 +293,9 @@ metadata, query resolution, aliases, cancellation, resource limits,
 concurrent rendering, fuzz seeds, and benchmarks. A generated Arabic fixture is
 also opened and rendered with Microsoft Word during local visual QA.
 
+CI enforces 100% Go statement coverage for the library, expression engine,
+CLI, and complete example, in addition to the behavioral feature matrix.
+
 Test fixtures are synthetic and product-neutral. See
 [`docs/TESTING.md`](docs/TESTING.md) for package layout and data-isolation
 rules, and [`docs/FEATURE_COVERAGE.md`](docs/FEATURE_COVERAGE.md) for the

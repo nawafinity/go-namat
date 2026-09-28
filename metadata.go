@@ -106,9 +106,6 @@ func simpleXMLValues(data []byte) (map[string]string, error) {
 				stack[len(stack)-1].text.Write([]byte(current))
 			}
 		case xml.EndElement:
-			if len(stack) == 0 {
-				continue
-			}
 			finished := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			value := strings.TrimSpace(finished.text.String())

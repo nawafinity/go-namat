@@ -47,9 +47,10 @@ jobs:
               }
             }'
           }
-          check_coverage . 80 coverage-root.out
-          check_coverage ./internal/expr 75 coverage-expr.out
-          check_coverage ./cmd/namat 55 coverage-cli.out
+          check_coverage . 100 coverage-root.out
+          check_coverage ./internal/expr 100 coverage-expr.out
+          check_coverage ./cmd/namat 100 coverage-cli.out
+          check_coverage ./examples/complete 100 coverage-example.out
       - name: Reject product-specific test data
         shell: bash
         run: |

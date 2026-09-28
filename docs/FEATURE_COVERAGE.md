@@ -69,5 +69,6 @@ automated behavioral test. Features explicitly listed as unsupported in
 | English, product-neutral committed test sources | `TestCommittedTestsUseEnglishAndProductNeutralData` |
 
 The matrix represents 100% behavioral coverage of the currently documented
-core feature set. Statement coverage is tracked separately because executing
-every line does not prove that every supported behavior is correct.
+core feature set. The root library, native expression engine, CLI, and complete
+example also maintain 100% Go statement coverage. CI enforces both guarantees;
+statement coverage complements, but does not replace, behavioral assertions.

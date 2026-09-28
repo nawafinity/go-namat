@@ -202,26 +202,22 @@ func (s *renderState) imageNode(value any) (*xmlNode, error) {
 	rotation := int64(math.Round(image.Rotation * 60000))
 	name := "Namat image " + strconv.Itoa(drawingID)
 	xmlSource := fmt.Sprintf(`<w:r><w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="%d" cy="%d"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="%d" name="%s" descr="%s"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="%d" name="%s" descr="%s"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill>%s<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm rot="%d"><a:off x="0" y="0"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`, cx, cy, drawingID, escapeXML(name), escapeXML(image.Alt), drawingID, escapeXML(name), escapeXML(image.Alt), blip, rotation, cx, cy)
-	nodes, err := parseXMLFragment(xmlSource)
-	if err != nil || len(nodes) != 1 {
-		return nil, fmt.Errorf("build IMAGE drawing: %w", err)
+	node, err := singleXMLNode(xmlSource, "IMAGE drawing")
+	if err != nil || image.Caption == "" {
+		return node, err
 	}
-	if image.Caption != "" {
-		caption := elementWithPrefix("w", "r")
-		caption.Children = append(caption.Children, elementWithPrefix("w", "br"))
-		text := elementWithPrefix("w", "t")
-		text.Children = append(text.Children, &xmlNode{Type: xmlText, Data: image.Caption})
-		caption.Children = append(caption.Children, text)
-		nodes[0].Children = append(nodes[0].Children, caption.Children...)
-	}
-	return nodes[0], nil
+	caption := elementWithPrefix("w", "r")
+	caption.Children = append(caption.Children, elementWithPrefix("w", "br"))
+	text := elementWithPrefix("w", "t")
+	text.Children = append(text.Children, &xmlNode{Type: xmlText, Data: image.Caption})
+	caption.Children = append(caption.Children, text)
+	node.Children = append(node.Children, caption.Children...)
+	return node, nil
 }
 
 func (s *renderState) addImageResource(data []byte, extension string) (string, error) {
 	partName := s.pkg.uniquePartName("word/media", "namat-image-", extension)
-	if err := s.pkg.addPart(partName, data, zip.Deflate); err != nil {
-		return "", err
-	}
+	s.pkg.addGeneratedPart(partName, data, zip.Deflate)
 	if err := s.pkg.ensureDefaultContentType(extension, imageContentTypes[extension]); err != nil {
 		return "", err
 	}
@@ -255,11 +251,7 @@ func (s *renderState) linkNode(value any) (*xmlNode, error) {
 	if link.Tooltip != "" {
 		tooltip = ` w:tooltip="` + escapeXML(link.Tooltip) + `"`
 	}
-	nodes, err := parseXMLFragment(`<w:hyperlink xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="` + escapeXML(relationshipID) + `" w:history="1"` + tooltip + `><w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">` + escapeXML(link.Label) + `</w:t></w:r></w:hyperlink>`)
-	if err != nil || len(nodes) != 1 {
-		return nil, fmt.Errorf("build LINK node: %w", err)
-	}
-	return nodes[0], nil
+	return singleXMLNode(`<w:hyperlink xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="`+escapeXML(relationshipID)+`" w:history="1"`+tooltip+`><w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">`+escapeXML(link.Label)+`</w:t></w:r></w:hyperlink>`, "LINK node")
 }
 
 func (s *renderState) htmlNode(value any) (*xmlNode, error) {
@@ -268,9 +260,7 @@ func (s *renderState) htmlNode(value any) (*xmlNode, error) {
 		return nil, fmt.Errorf("HTML result is empty")
 	}
 	partName := s.pkg.uniquePartName("word", "namat-html-", "html")
-	if err := s.pkg.addPart(partName, []byte(html), zip.Deflate); err != nil {
-		return nil, err
-	}
+	s.pkg.addGeneratedPart(partName, []byte(html), zip.Deflate)
 	if err := s.pkg.ensureDefaultContentType("html", "text/html"); err != nil {
 		return nil, err
 	}
@@ -278,9 +268,16 @@ func (s *renderState) htmlNode(value any) (*xmlNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := parseXMLFragment(`<w:altChunk xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="` + escapeXML(relationshipID) + `"/>`)
-	if err != nil || len(nodes) != 1 {
-		return nil, fmt.Errorf("build HTML altChunk: %w", err)
+	return singleXMLNode(`<w:altChunk xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="`+escapeXML(relationshipID)+`"/>`, "HTML altChunk")
+}
+
+func singleXMLNode(source, label string) (*xmlNode, error) {
+	nodes, err := parseXMLFragment(source)
+	if err != nil {
+		return nil, fmt.Errorf("build %s: %w", label, err)
+	}
+	if len(nodes) != 1 {
+		return nil, fmt.Errorf("build %s: expected one root node, got %d", label, len(nodes))
 	}
 	return nodes[0], nil
 }
@@ -324,12 +321,8 @@ func replaceTextRangeWithNode(paragraph *xmlNode, start, end int, inserted *xmlN
 	if first.index == last.index {
 		original := paragraph.Children[first.index]
 		after := original.clone()
-		if err := setTextOfNode(original, prefix); err != nil {
-			return err
-		}
-		if err := setTextOfNode(after, suffix); err != nil {
-			return err
-		}
+		setExistingText(original, prefix)
+		setExistingText(after, suffix)
 		children := make([]*xmlNode, 0, len(paragraph.Children)+2)
 		children = append(children, paragraph.Children[:first.index+1]...)
 		children = append(children, inserted, after)
@@ -337,23 +330,25 @@ func replaceTextRangeWithNode(paragraph *xmlNode, start, end int, inserted *xmlN
 		paragraph.Children = children
 		return nil
 	}
-	if err := setTextOfNode(paragraph.Children[first.index], prefix); err != nil {
-		return err
-	}
+	setExistingText(paragraph.Children[first.index], prefix)
 	for index := startSpan + 1; index < endSpan; index++ {
-		if err := setTextOfNode(paragraph.Children[spans[index].index], ""); err != nil {
-			return err
-		}
+		setExistingText(paragraph.Children[spans[index].index], "")
 	}
-	if err := setTextOfNode(paragraph.Children[last.index], suffix); err != nil {
-		return err
-	}
+	setExistingText(paragraph.Children[last.index], suffix)
 	children := make([]*xmlNode, 0, len(paragraph.Children)+1)
 	children = append(children, paragraph.Children[:first.index+1]...)
 	children = append(children, inserted)
 	children = append(children, paragraph.Children[first.index+1:]...)
 	paragraph.Children = children
 	return nil
+}
+
+func setExistingText(node *xmlNode, value string) {
+	nodes := textNodes(node)
+	nodes[0].Data = value
+	for _, text := range nodes[1:] {
+		text.Data = ""
+	}
 }
 
 func expandTextMarkup(root *xmlNode, options Options) error {

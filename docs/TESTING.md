@@ -47,4 +47,13 @@ go test -race ./...
 go test -run '^$' -bench . -benchmem ./...
 ```
 
+CI requires 100% statement coverage independently for the root library,
+native expression engine, CLI, and complete example. Generate a combined local
+profile with:
+
+```bash
+go test -coverprofile=coverage-all.out ./...
+go tool cover -func=coverage-all.out
+```
+
 Fuzz targets should also be run for longer periods before a release.

@@ -15,8 +15,9 @@ import (
 )
 
 var version = "dev"
+var exit = os.Exit
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() { exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -177,15 +178,42 @@ func render(args []string, stdout, stderr io.Writer) int {
 }
 
 func atomicWrite(name string, data []byte, replace bool) error {
+	return atomicWriteWithFS(osFileSystem{}, name, data, replace)
+}
+
+type temporaryFile interface {
+	io.Writer
+	Name() string
+	Sync() error
+	Close() error
+}
+
+type fileSystem interface {
+	Stat(string) (os.FileInfo, error)
+	CreateTemp(string, string) (temporaryFile, error)
+	Remove(string) error
+	Rename(string, string) error
+}
+
+type osFileSystem struct{}
+
+func (osFileSystem) Stat(name string) (os.FileInfo, error) { return os.Stat(name) }
+func (osFileSystem) CreateTemp(directory, pattern string) (temporaryFile, error) {
+	return os.CreateTemp(directory, pattern)
+}
+func (osFileSystem) Remove(name string) error             { return os.Remove(name) }
+func (osFileSystem) Rename(oldName, newName string) error { return os.Rename(oldName, newName) }
+
+func atomicWriteWithFS(fs fileSystem, name string, data []byte, replace bool) error {
 	if !replace {
-		if _, err := os.Stat(name); err == nil {
+		if _, err := fs.Stat(name); err == nil {
 			return fmt.Errorf("destination already exists")
 		} else if !os.IsNotExist(err) {
 			return err
 		}
 	}
 	directory := filepath.Dir(name)
-	temporary, err := os.CreateTemp(directory, ".namat-*.tmp")
+	temporary, err := fs.CreateTemp(directory, ".namat-*.tmp")
 	if err != nil {
 		return err
 	}
@@ -194,7 +222,7 @@ func atomicWrite(name string, data []byte, replace bool) error {
 	defer func() {
 		_ = temporary.Close()
 		if !committed {
-			_ = os.Remove(temporaryName)
+			_ = fs.Remove(temporaryName)
 		}
 	}()
 	if _, err := temporary.Write(data); err != nil {
@@ -207,11 +235,11 @@ func atomicWrite(name string, data []byte, replace bool) error {
 		return err
 	}
 	if replace {
-		if err := os.Remove(name); err != nil && !os.IsNotExist(err) {
+		if err := fs.Remove(name); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
-	if err := os.Rename(temporaryName, name); err != nil {
+	if err := fs.Rename(temporaryName, name); err != nil {
 		return err
 	}
 	committed = true

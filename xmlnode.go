@@ -63,6 +63,10 @@ func parseXML(data []byte) (*xmlNode, error) {
 			if len(stack) == 1 {
 				return nil, fmt.Errorf("unexpected closing element %s", qname(t.Name))
 			}
+			open := stack[len(stack)-1]
+			if open.Name != t.Name {
+				return nil, fmt.Errorf("closing element %s does not match %s", qname(t.Name), qname(open.Name))
+			}
 			stack = stack[:len(stack)-1]
 		case xml.CharData:
 			parent.Children = append(parent.Children, &xmlNode{Type: xmlText, Data: string(t)})
@@ -80,21 +84,17 @@ func parseXML(data []byte) (*xmlNode, error) {
 	return root, nil
 }
 
-func (n *xmlNode) bytes() ([]byte, error) {
+func (n *xmlNode) bytes() []byte {
 	var out bytes.Buffer
-	if err := writeXML(&out, n); err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
+	writeXML(&out, n)
+	return out.Bytes()
 }
 
-func writeXML(out *bytes.Buffer, n *xmlNode) error {
+func writeXML(out *bytes.Buffer, n *xmlNode) {
 	switch n.Type {
 	case xmlDocument:
 		for _, child := range n.Children {
-			if err := writeXML(out, child); err != nil {
-				return err
-			}
+			writeXML(out, child)
 		}
 	case xmlElement:
 		out.WriteByte('<')
@@ -103,22 +103,18 @@ func writeXML(out *bytes.Buffer, n *xmlNode) error {
 			out.WriteByte(' ')
 			out.WriteString(qname(attr.Name))
 			out.WriteString(`="`)
-			if err := xml.EscapeText(out, []byte(attr.Value)); err != nil {
-				return err
-			}
+			_ = xml.EscapeText(out, []byte(attr.Value))
 			out.WriteByte('"')
 		}
 		out.WriteByte('>')
 		for _, child := range n.Children {
-			if err := writeXML(out, child); err != nil {
-				return err
-			}
+			writeXML(out, child)
 		}
 		out.WriteString("</")
 		out.WriteString(qname(n.Name))
 		out.WriteByte('>')
 	case xmlText:
-		return xml.EscapeText(out, []byte(n.Data))
+		_ = xml.EscapeText(out, []byte(n.Data))
 	case xmlComment:
 		out.WriteString("<!--")
 		out.WriteString(n.Data)
@@ -136,7 +132,6 @@ func writeXML(out *bytes.Buffer, n *xmlNode) error {
 		}
 		out.WriteString("?>")
 	}
-	return nil
 }
 
 func qname(name xml.Name) string {
@@ -223,8 +218,5 @@ func parseXMLFragment(source string) ([]*xmlNode, error) {
 		return nil, err
 	}
 	fragment := firstElement(root)
-	if fragment == nil {
-		return nil, fmt.Errorf("empty XML fragment")
-	}
 	return fragment.Children, nil
 }

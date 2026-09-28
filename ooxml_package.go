@@ -2,6 +2,7 @@ package namat
 
 import (
 	"archive/zip"
+	"encoding/xml"
 	"fmt"
 	"path"
 	"strconv"
@@ -27,6 +28,15 @@ func (p *docxPackage) addPart(name string, data []byte, method uint16) error {
 	return nil
 }
 
+// addGeneratedPart adds a name produced by uniquePartName or
+// relationshipPartName. Those internal generators guarantee normalization and
+// uniqueness, so this path has no recoverable failure mode.
+func (p *docxPackage) addGeneratedPart(name string, data []byte, method uint16) {
+	header := zip.FileHeader{Name: name, Method: method}
+	p.Parts[name] = &packagePart{Header: header, Data: append([]byte(nil), data...)}
+	p.Order = append(p.Order, name)
+}
+
 func (p *docxPackage) uniquePartName(directory, stem, extension string) string {
 	extension = strings.TrimPrefix(strings.ToLower(extension), ".")
 	for index := 1; ; index++ {
@@ -47,11 +57,11 @@ func (p *docxPackage) addRelationship(sourcePart, relationshipType, target, targ
 		}
 		root = parsed
 	} else {
-		parsed, err := parseXML([]byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="` + relationshipNamespace + `"></Relationships>`))
-		if err != nil {
-			return "", err
-		}
-		root = parsed
+		root = &xmlNode{Type: xmlDocument, Children: []*xmlNode{{
+			Type:  xmlElement,
+			Name:  xml.Name{Local: "Relationships"},
+			Attrs: []xml.Attr{{Name: xml.Name{Local: "xmlns"}, Value: relationshipNamespace}},
+		}}}
 	}
 	relationships := firstElement(root)
 	if relationships == nil || !relationships.is("Relationships") {
@@ -80,14 +90,11 @@ func (p *docxPackage) addRelationship(sourcePart, relationshipType, target, targ
 		attrs = append(attrs, xmlAttribute{name: "TargetMode", value: targetMode})
 	}
 	relationships.Children = append(relationships.Children, elementNode("Relationship", attrs...))
-	content, err := root.bytes()
-	if err != nil {
-		return "", err
-	}
+	content := root.bytes()
 	if part, exists := p.Parts[relsName]; exists {
 		part.Data = content
-	} else if err := p.addPart(relsName, content, zip.Deflate); err != nil {
-		return "", err
+	} else {
+		p.addGeneratedPart(relsName, content, zip.Deflate)
 	}
 	return id, nil
 }
@@ -115,11 +122,7 @@ func (p *docxPackage) ensureDefaultContentType(extension, contentType string) er
 		xmlAttribute{name: "Extension", value: extension},
 		xmlAttribute{name: "ContentType", value: contentType},
 	))
-	content, err := root.bytes()
-	if err != nil {
-		return err
-	}
-	part.Data = content
+	part.Data = root.bytes()
 	return nil
 }
 

@@ -55,16 +55,9 @@ func readPackageWithLimits(data []byte, maxPartBytes, maxUncompressedBytes int64
 		if err != nil {
 			return nil, fmt.Errorf("open package part %s: %w", file.Name, err)
 		}
-		content, readErr := io.ReadAll(io.LimitReader(stream, maxPartBytes+1))
-		closeErr := stream.Close()
-		if readErr != nil {
-			return nil, fmt.Errorf("read package part %s: %w", file.Name, readErr)
-		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("close package part %s: %w", file.Name, closeErr)
-		}
-		if int64(len(content)) > maxPartBytes {
-			return nil, fmt.Errorf("%w: package part %s exceeds size limit", ErrSecurityLimit, name)
+		content, err := readPackagePart(stream, maxPartBytes, file.Name)
+		if err != nil {
+			return nil, err
 		}
 		header := file.FileHeader
 		header.Name = name
@@ -78,6 +71,18 @@ func readPackageWithLimits(data []byte, maxPartBytes, maxUncompressedBytes int64
 		return nil, fmt.Errorf("%w: not a Word DOCX package: word/document.xml is missing", ErrInvalidTemplate)
 	}
 	return pkg, nil
+}
+
+func readPackagePart(stream io.ReadCloser, maxPartBytes int64, name string) ([]byte, error) {
+	content, readErr := io.ReadAll(io.LimitReader(stream, maxPartBytes+1))
+	_ = stream.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read package part %s: %w", name, readErr)
+	}
+	if int64(len(content)) > maxPartBytes {
+		return nil, fmt.Errorf("%w: package part %s exceeds size limit", ErrSecurityLimit, name)
+	}
+	return content, nil
 }
 
 func (p *docxPackage) clone() *docxPackage {
@@ -139,9 +144,7 @@ func (p *docxPackage) bytesWithCompression(level int) ([]byte, error) {
 			return nil, fmt.Errorf("write package part %s: %w", name, err)
 		}
 	}
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("close DOCX package: %w", err)
-	}
+	_ = writer.Close()
 	return out.Bytes(), nil
 }
 

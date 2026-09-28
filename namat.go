@@ -175,11 +175,7 @@ func (t *Template) Render(parent context.Context, data any) ([]byte, error) {
 		if err := state.processNode(root); err != nil {
 			return nil, &Error{Part: name, Err: err}
 		}
-		content, err := root.bytes()
-		if err != nil {
-			return nil, &Error{Part: name, Err: fmt.Errorf("serialize XML: %w", err)}
-		}
-		pkg.Parts[name].Data = content
+		pkg.Parts[name].Data = root.bytes()
 	}
 	result, err := pkg.bytesWithCompression(t.options.CompressionLevel)
 	if err != nil {

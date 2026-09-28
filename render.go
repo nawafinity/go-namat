@@ -317,19 +317,33 @@ func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 		formatted := formatValue(value)
 		actions = append(actions, paragraphAction{start: span.Start, end: span.End, text: &formatted})
 	}
+	return finalizeParagraph(paragraph, actions, s.template.options)
+}
+
+func finalizeParagraph(paragraph *xmlNode, actions []paragraphAction, options Options) error {
+	if err := applyParagraphActions(paragraph, actions); err != nil {
+		return err
+	}
+	return expandTextMarkup(paragraph, options)
+}
+
+func applyParagraphActions(paragraph *xmlNode, actions []paragraphAction) error {
 	for index := len(actions) - 1; index >= 0; index-- {
-		action := actions[index]
-		if action.node != nil {
-			if err := replaceTextRangeWithNode(paragraph, action.start, action.end, action.node); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := replaceParagraphText(paragraph, []textReplacement{{start: action.start, end: action.end, value: *action.text}}); err != nil {
+		if err := applyParagraphAction(paragraph, actions[index]); err != nil {
 			return err
 		}
 	}
-	return expandTextMarkup(paragraph, s.template.options)
+	return nil
+}
+
+func applyParagraphAction(paragraph *xmlNode, action paragraphAction) error {
+	if action.node != nil {
+		return replaceTextRangeWithNode(paragraph, action.start, action.end, action.node)
+	}
+	if action.text == nil {
+		return fmt.Errorf("paragraph action has neither text nor node")
+	}
+	return replaceParagraphText(paragraph, []textReplacement{{start: action.start, end: action.end, value: *action.text}})
 }
 
 func (s *renderState) evaluate(source string) (any, error) {
