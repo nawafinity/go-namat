@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/namat-mark.svg" width="120" alt="Namat logo">
+
 # Namat · نَمَط
 
 **A native Go template engine for Microsoft Word**
@@ -22,8 +24,8 @@ Namat turns DOCX and DOCM templates into data-driven reports while preserving
 the document structure created in Word: styles, media, headers, footers,
 macros, and untouched OOXML parts.
 
-It is written entirely in Go. There is no embedded JavaScript engine, Node.js
-runtime, Office dependency, helper process, or third-party Go module.
+Written entirely in Go with zero third-party module dependencies, Namat embeds
+cleanly into services, command-line tools, and desktop applications.
 
 > [!IMPORTANT]
 > Namat is currently **pre-v1**. The core API and template language are usable
@@ -32,19 +34,44 @@ runtime, Office dependency, helper process, or third-party Go module.
 
 ## Why Namat?
 
-- **Pure Go** — embed one library and ship one native application binary.
-- **Word-first authoring** — create layouts and styles in Word instead of
-  rebuilding them in code.
-- **Safe expressions** — templates receive no implicit filesystem, process,
-  environment, reflection, or network access.
-- **Structure-aware rendering** — conditions and loops operate on paragraphs
-  and complete table rows, including nested blocks.
-- **Rich content** — generate text, images, links, HTML altChunks, line breaks,
-  and opt-in literal OOXML.
-- **Production controls** — enforce context cancellation, timeouts, ZIP limits,
-  output limits, aggregate iteration limits, and typed errors.
-- **Reusable compilation** — compile once and render safely from multiple
-  goroutines.
+<table>
+  <tr>
+    <td width="50%">
+      <img src="assets/icons/native.svg" width="30" alt=""><br>
+      <strong>Pure Go</strong><br>
+      Embed one focused library and ship one native application binary.
+    </td>
+    <td width="50%">
+      <img src="assets/icons/word-first.svg" width="30" alt=""><br>
+      <strong>Word-first authoring</strong><br>
+      Create layouts and styles in Word instead of rebuilding them in code.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/icons/safe.svg" width="30" alt=""><br>
+      <strong>Safe by design</strong><br>
+      Use bounded expressions, typed errors, timeouts, and explicit resource limits.
+    </td>
+    <td width="50%">
+      <img src="assets/icons/structure.svg" width="30" alt=""><br>
+      <strong>Structure-aware rendering</strong><br>
+      Apply nested conditions and loops to paragraphs and complete table rows.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/icons/rich-content.svg" width="30" alt=""><br>
+      <strong>Rich content</strong><br>
+      Generate text, images, links, HTML altChunks, line breaks, and trusted OOXML.
+    </td>
+    <td width="50%">
+      <img src="assets/icons/concurrent.svg" width="30" alt=""><br>
+      <strong>Concurrent reuse</strong><br>
+      Compile once and render safely from multiple goroutines.
+    </td>
+  </tr>
+</table>
 
 ## Quick start
 
@@ -328,12 +355,14 @@ and the dated [benchmark baseline](docs/BENCHMARKS.md).
 
 ```text
 go-namat/
+├── assets/             project mark and feature icons
 ├── cmd/namat/          optional native CLI
 ├── docs/               architecture, compatibility, testing, and performance
 ├── examples/complete/  complete synthetic report example
 ├── internal/engine/    private DOCX compiler, renderer, and focused tests
 ├── internal/expr/      native expression lexer, parser, and evaluator
 ├── namat.go             stable public package facade
+├── README_AR.md         complete Arabic documentation
 ├── types.go             public options, values, commands, and errors
 └── *_test.go            public API examples and repository policy checks
 ```
@@ -373,17 +402,27 @@ standalone repository. See the detailed [roadmap](docs/ROADMAP.md).
 
 ## Contributing
 
-Contributions are welcome when they preserve the pure-Go design: no JavaScript
-runtime, helper executable, or hidden network dependency. Tests must use
-synthetic documents and values only—never customer templates, production data,
+Contributions are welcome when they preserve the focused Go architecture,
+explicit dependency policy, and stable public surface. Tests must use synthetic
+documents and values only—never customer templates, production data,
 credentials, or confidential material.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change.
+
+## Inspiration
+
+Namat is inspired by the natural, Word-first authoring model of
+[docx-templates](https://github.com/guigrpa/docx-templates). It reimagines that
+workflow around Go's type system, concurrency model, and deployment strengths,
+with its own expression engine, OOXML pipeline, API, and safety controls.
 
 ## The name
 
 **Namat (نَمَط)** is the Arabic word for a pattern, mode, or template. It
 describes the library directly and remains short in Go imports.
+
+The mark pairs a folded document with interlocking geometric forms: a visual
+shorthand for structured templates becoming finished reports.
 
 ## License
 

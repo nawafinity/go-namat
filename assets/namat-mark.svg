@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title description">
+  <title id="title">Namat logo</title>
+  <desc id="description">A document containing an interlocking geometric pattern</desc>
+  <defs>
+    <linearGradient id="background" x1="24" y1="18" x2="140" y2="146" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#172554"/>
+      <stop offset="1" stop-color="#0F766E"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="50" y1="30" x2="112" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E6FFFB"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="144" height="144" rx="34" fill="url(#background)"/>
+  <path d="M46 27h48l24 24v81a4 4 0 0 1-4 4H46a4 4 0 0 1-4-4V31a4 4 0 0 1 4-4Z" fill="url(#paper)"/>
+  <path d="M94 27v20a4 4 0 0 0 4 4h20" fill="#CCFBF1"/>
+  <path d="m61 76 14-14 14 14-14 14-14-14Z" fill="none" stroke="#0D9488" stroke-width="5" stroke-linejoin="round"/>
+  <path d="m75 90 14-14 14 14-14 14-14-14Z" fill="none" stroke="#F59E0B" stroke-width="5" stroke-linejoin="round"/>
+  <path d="m61 104 14-14 14 14-14 14-14-14Z" fill="none" stroke="#0D9488" stroke-width="5" stroke-linejoin="round"/>
+</svg>

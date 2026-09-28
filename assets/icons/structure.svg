@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Structure-aware rendering">
+  <rect x="4" y="4" width="9" height="7" rx="2" fill="none" stroke="#0F766E" stroke-width="2.4"/>
+  <rect x="19" y="21" width="9" height="7" rx="2" fill="none" stroke="#0F766E" stroke-width="2.4"/>
+  <path d="M8.5 11v6a4 4 0 0 0 4 4H19M16 7h7a4 4 0 0 1 4 4v5" fill="none" stroke="#F59E0B" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/namat-mark.svg" width="120" alt="شعار نَمَط">
+
 # نَمَط · Namat
 
 **محرك قوالب أصيل بلغة Go لمستندات Microsoft Word**
@@ -22,8 +24,8 @@
 البنية التي صُممت في Word: الأنماط، والصور، والرؤوس، والتذييلات، ووحدات
 الماكرو، وأجزاء OOXML التي لا تحتاج إلى تعديل.
 
-المكتبة مكتوبة بالكامل بلغة Go، ولا تضمّن محرك JavaScript أو بيئة Node.js أو
-برامج مساعدة أو تبعيات على Microsoft Office أو حزم Go خارجية.
+المكتبة مكتوبة بالكامل بلغة Go، ولا تعتمد على أي حزمة Go خارجية، ولذلك تندمج
+بسلاسة داخل الخدمات وأدوات سطر الأوامر وتطبيقات سطح المكتب.
 
 > [!IMPORTANT]
 > نَمَط حاليًا في مرحلة **ما قبل الإصدار 1.0**. الواجهة الأساسية ولغة القوالب
@@ -34,18 +36,44 @@
 
 ## لماذا نَمَط؟
 
-- **Go أصيل** — مكتبة واحدة داخل تطبيقك، وملف تنفيذي أصيل واحد عند التوزيع.
-- **Word أولًا** — أنشئ التخطيط والأنماط في Word بدل إعادة بنائها برمجيًا.
-- **تعبيرات آمنة** — لا تحصل القوالب تلقائيًا على صلاحيات للملفات أو العمليات
-  أو متغيرات البيئة أو آليات الانعكاس (`reflection`) أو الشبكة.
-- **إدراك لبنية المستند** — تعمل الشروط والحلقات على الفقرات وصفوف الجداول
-  الكاملة، مع دعم التداخل.
-- **محتوى غني** — أنشئ النصوص والصور والروابط ومقاطع HTML بصيغة altChunk
-  وفواصل الأسطر وOOXML الاختياري.
-- **ضوابط إنتاجية** — طبّق الإلغاء والمهلات وحدود ZIP والخرج والتكرارات
-  والأخطاء المصنفة.
-- **إعادة استخدام آمنة** — حضّر القالب مرة واحدة، ثم أنشئ منه التقارير بأمان
-  عبر عدة مسارات تنفيذ (`goroutines`).
+<table>
+  <tr>
+    <td width="50%" dir="rtl">
+      <img src="assets/icons/native.svg" width="30" alt=""><br>
+      <strong>Go أصيل</strong><br>
+      ضمّن مكتبة مركزة واحدة، ووزّع تطبيقًا أصيلًا واحدًا.
+    </td>
+    <td width="50%" dir="rtl">
+      <img src="assets/icons/word-first.svg" width="30" alt=""><br>
+      <strong>Word أولًا</strong><br>
+      أنشئ التخطيط والأنماط في Word بدل إعادة بنائها برمجيًا.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" dir="rtl">
+      <img src="assets/icons/safe.svg" width="30" alt=""><br>
+      <strong>آمن منذ التصميم</strong><br>
+      استخدم تعبيرات محدودة وأخطاء مصنفة ومهلات وحدود موارد صريحة.
+    </td>
+    <td width="50%" dir="rtl">
+      <img src="assets/icons/structure.svg" width="30" alt=""><br>
+      <strong>إدراك لبنية المستند</strong><br>
+      طبّق الشروط والحلقات المتداخلة على الفقرات وصفوف الجداول الكاملة.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" dir="rtl">
+      <img src="assets/icons/rich-content.svg" width="30" alt=""><br>
+      <strong>محتوى غني</strong><br>
+      أنشئ النصوص والصور والروابط ومقاطع HTML وفواصل الأسطر وOOXML الموثوق.
+    </td>
+    <td width="50%" dir="rtl">
+      <img src="assets/icons/concurrent.svg" width="30" alt=""><br>
+      <strong>إعادة استخدام متزامنة</strong><br>
+      حضّر القالب مرة واحدة، ثم أنشئ منه التقارير بأمان عبر عدة goroutines.
+    </td>
+  </tr>
+</table>
 
 <a id="quick-start"></a>
 
@@ -329,12 +357,14 @@ go test -run '^$' -bench . -benchmem ./...
 
 ```text
 go-namat/
+├── assets/             project mark and feature icons
 ├── cmd/namat/          optional native CLI
 ├── docs/               architecture, compatibility, testing, and performance
 ├── examples/complete/  complete synthetic report example
 ├── internal/engine/    private DOCX compiler, renderer, and focused tests
 ├── internal/expr/      native expression lexer, parser, and evaluator
 ├── namat.go             stable public package facade
+├── README_AR.md         complete Arabic documentation
 ├── types.go             public options, values, commands, and errors
 └── *_test.go            public API examples and repository policy checks
 ```
@@ -374,17 +404,26 @@ import "github.com/nawafinity/go-namat"
 
 ## المساهمة
 
-نرحب بالمساهمات التي تحافظ على تصميم المشروع الأصيل بلغة Go: دون بيئة تشغيل
-JavaScript أو برامج مساعدة أو تبعيات شبكية خفية. ويجب أن تستخدم الاختبارات
-مستندات وقيمًا اصطناعية فقط، دون قوالب عملاء أو بيانات إنتاج أو بيانات اعتماد
-أو معلومات سرية.
+نرحب بالمساهمات التي تحافظ على معمارية Go المركزة، وسياسة التبعيات الصريحة،
+واستقرار الواجهة العامة. ويجب أن تستخدم الاختبارات مستندات وقيمًا اصطناعية
+فقط، دون قوالب عملاء أو بيانات إنتاج أو بيانات اعتماد أو معلومات سرية.
 
 اقرأ [دليل المساهمة](CONTRIBUTING.md) قبل إرسال أي تغيير.
+
+## الإلهام
+
+استُلهم نَمَط من أسلوب التأليف الطبيعي القائم على Word في مشروع
+[docx-templates](https://github.com/guigrpa/docx-templates)، ثم أعاد تصور هذا
+الأسلوب بما يلائم نظام الأنواع والتزامن وسهولة التوزيع في Go، مع محرك تعبيرات
+ومسار OOXML وواجهة برمجية وضوابط أمان خاصة به.
 
 ## الاسم
 
 **نَمَط** كلمة عربية تعني الأسلوب أو القالب أو الهيئة المتكررة؛ وهو اسم قصير
 يصف المكتبة مباشرة ويظل واضحًا داخل عبارات الاستيراد في Go.
+
+يجمع الشعار بين مستند مطوي وأشكال هندسية متداخلة؛ في إشارة بصرية إلى تحوّل
+القوالب المنظمة إلى تقارير مكتملة.
 
 ## الترخيص
 
