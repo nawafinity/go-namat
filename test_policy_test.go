@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -44,6 +45,37 @@ func TestDecodeJSONPreservesExactNumbers(t *testing.T) {
 	}
 	if _, err := DecodeJSON(nil); err == nil {
 		t.Fatal("nil JSON reader succeeded")
+	}
+}
+
+func TestDecodeJSONFailureAndNormalizationBranches(t *testing.T) {
+	for _, source := range []string{"", "{", "1 trailing"} {
+		if _, err := DecodeJSON(strings.NewReader(source)); err == nil {
+			t.Fatalf("DecodeJSON(%q) succeeded", source)
+		}
+	}
+
+	decoded, err := DecodeJSON(strings.NewReader(`{"nested":[1,{"value":2.5}],"enabled":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	object := decoded.(map[string]any)
+	items := object["nested"].([]any)
+	if items[0] != int64(1) || items[1].(map[string]any)["value"].(Decimal).String() != "2.5" || object["enabled"] != true {
+		t.Fatalf("nested normalization = %#v", decoded)
+	}
+
+	if _, err := normalizeJSONValue(json.Number("invalid")); err == nil {
+		t.Fatal("invalid json.Number normalized")
+	}
+	if _, err := normalizeJSONValue([]any{json.Number("invalid")}); err == nil {
+		t.Fatal("invalid number in list normalized")
+	}
+	if _, err := normalizeJSONValue(map[string]any{"value": json.Number("invalid")}); err == nil {
+		t.Fatal("invalid number in object normalized")
+	}
+	if got, err := normalizeJSONValue("unchanged"); err != nil || got != "unchanged" {
+		t.Fatalf("scalar normalization = %#v, %v", got, err)
 	}
 }
 
@@ -123,6 +155,10 @@ func TestPublicErrorTranslationAndTypes(t *testing.T) {
 	}
 	if (&Error{Part: "part", Err: inner}).Error() == "" || (&Error{Err: inner}).Error() == "" {
 		t.Fatal("template error formatting returned an empty message")
+	}
+	located := (&Error{Part: "word/document.xml", Paragraph: 2, CommandIndex: 3, Command: "value", Err: inner}).Error()
+	if !strings.Contains(located, "paragraph 2") || !strings.Contains(located, "command 3") {
+		t.Fatalf("located error = %q", located)
 	}
 
 	multiple := publicError(&internalengine.MultiError{Errors: []error{inner}})

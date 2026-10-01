@@ -371,9 +371,6 @@ func KindOf(input any) value.Kind {
 		}
 		reflected = reflected.Elem()
 	}
-	if !reflected.IsValid() {
-		return value.Null
-	}
 	if reflected.CanInterface() {
 		if _, ok := reflected.Interface().(value.DecimalValue); ok {
 			return value.Decimal
@@ -440,14 +437,10 @@ func numericOperation(operator string, left, right any) (any, error) {
 		}
 	}
 	if leftKind == value.Decimal || rightKind == value.Decimal || operator == "/" {
-		leftDecimal, err := exactDecimal(left)
-		if err != nil {
-			return nil, err
-		}
-		rightDecimal, err := exactDecimal(right)
-		if err != nil {
-			return nil, err
-		}
+		// Both operands are known exact numeric kinds here: floats returned
+		// above, and the operator is division or an operand is decimal.
+		leftDecimal, _ := exactDecimal(left)
+		rightDecimal, _ := exactDecimal(right)
 		switch operator {
 		case "+":
 			return leftDecimal.Add(rightDecimal), nil

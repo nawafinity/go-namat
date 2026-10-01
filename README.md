@@ -15,7 +15,7 @@ Author reports in Word. Render them with Go. Ship one native application.
 [![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/nawafinity/go-namat.svg)](https://pkg.go.dev/github.com/nawafinity/go-namat)
 [![CI](https://github.com/nawafinity/go-namat/actions/workflows/ci.yml/badge.svg)](https://github.com/nawafinity/go-namat/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/statement%20coverage-gated-brightgreen)](docs/TESTING.md)
+[![Coverage](https://img.shields.io/badge/statement%20coverage-100%25-brightgreen)](docs/TESTING.md)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 
 **English** · [العربية](README_AR.md)
@@ -354,7 +354,7 @@ and limitations.
 
 | Quality gate | Current guarantee |
 | --- | --- |
-| Statement coverage | Per-package minimums enforced in CI; see `docs/TESTING.md` |
+| Statement coverage | **100%** independently enforced for every shipped Go package |
 | Behavioral coverage | Verified core capabilities map to automated evidence; client-rendered visual compatibility remains a pre-v1 gate |
 | Platforms | CI runs on Linux, Windows, and macOS with Go 1.23 and the current Go release line |
 | Concurrency | Race detector and concurrent-rendering tests |

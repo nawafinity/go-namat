@@ -50,8 +50,8 @@ Versioning beginning with v1.0.
   multilingual cases for Unicode and RTL behavior.
 - A core feature matrix maps every supported capability to automated evidence.
 - CI now runs on Linux, Windows, and macOS with package-specific coverage
-  thresholds, tests both Go 1.23 and the current Go release line, and fuzzes all
-  five declared targets.
+  gates fixed at 100%, tests both Go 1.23 and the current Go release line, and
+  fuzzes all five declared targets.
 - Rendering now enforces output size while streaming ZIP bytes and rechecks
   package-part and uncompressed-size limits after generated content is added.
 - Commands remain discoverable when delimiter characters themselves are split

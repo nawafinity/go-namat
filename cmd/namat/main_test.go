@@ -272,6 +272,75 @@ func TestInspectFailureAndOutputEdges(t *testing.T) {
 	}
 }
 
+func TestLintSuccessAndFailureEdges(t *testing.T) {
+	directory := t.TempDir()
+	validPath := filepath.Join(directory, "valid.docx")
+	invalidPath := filepath.Join(directory, "invalid.docx")
+	compileInvalidPath := filepath.Join(directory, "compile-invalid.docx")
+	renderInvalidPath := filepath.Join(directory, "render-invalid.docx")
+	validDataPath := filepath.Join(directory, "valid.json")
+	invalidDataPath := filepath.Join(directory, "invalid.json")
+	if err := os.WriteFile(validPath, syntheticTemplate(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(invalidPath, []byte("bad"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(compileInvalidPath, syntheticTemplateCommand(t, "[[unknown()]]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(renderInvalidPath, syntheticTemplateCommand(t, "[[missing]]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(validDataPath, []byte(`{"value":"ok"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(invalidDataPath, []byte(`{`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, args := range [][]string{
+		{"lint", filepath.Join(directory, "missing.docx")},
+		{"lint", invalidPath},
+		{"lint", compileInvalidPath},
+		{"lint", "--data", filepath.Join(directory, "missing.json"), validPath},
+		{"lint", "--data", invalidDataPath, validPath},
+		{"lint", "--data", validDataPath, renderInvalidPath},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 1 {
+			t.Fatalf("run(%v) = %d, stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"lint", validPath}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "valid v1 template:") {
+		t.Fatalf("lint without data code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"lint", "--data", validDataPath, validPath}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "valid v1 template and data:") {
+		t.Fatalf("lint with data code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	wantErr := errors.New("write")
+	if code := lint([]string{"--json", validPath}, failingWriter{err: wantErr}, &stderr); code != 1 {
+		t.Fatalf("lint writer code = %d", code)
+	}
+}
+
+func TestInspectCompileValidationFailure(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "compile-invalid.docx")
+	if err := os.WriteFile(path, syntheticTemplateCommand(t, "[[unknown()]]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"inspect", "--details", path}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "unknown function") {
+		t.Fatalf("inspect code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestMetadataFailureAndWriterEdges(t *testing.T) {
 	directory := t.TempDir()
 	validPath := filepath.Join(directory, "valid.docx")

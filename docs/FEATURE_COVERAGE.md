@@ -75,6 +75,6 @@ LibreOffice can convert the generated document to a non-empty PDF; it is not a
 reviewed visual golden comparison.
 
 The matrix is the traceability index for the currently verified automated core;
-it does not claim client-rendered visual coverage. CI enforces explicit
-per-package statement-coverage floors. Statement coverage complements, but does
-not replace, behavioral and client-compatibility evidence.
+it does not claim client-rendered visual coverage. CI enforces 100% statement
+coverage independently for every shipped Go package. Statement coverage
+complements, but does not replace, behavioral and client-compatibility evidence.

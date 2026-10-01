@@ -15,7 +15,7 @@
 [![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/nawafinity/go-namat.svg)](https://pkg.go.dev/github.com/nawafinity/go-namat)
 [![CI](https://github.com/nawafinity/go-namat/actions/workflows/ci.yml/badge.svg)](https://github.com/nawafinity/go-namat/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/statement%20coverage-gated-brightgreen)](docs/TESTING.md)
+[![Coverage](https://img.shields.io/badge/statement%20coverage-100%25-brightgreen)](docs/TESTING.md)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 
 [English](README.md) · **العربية**
@@ -351,7 +351,7 @@ go build -trimpath -ldflags="-s -w" ./cmd/namat
 
 | بوابة الجودة | الضمان الحالي |
 | --- | --- |
-| تغطية العبارات البرمجية | حدود دنيا مستقلة لكل حزمة تفرضها CI؛ راجع `docs/TESTING.md` |
+| تغطية العبارات البرمجية | **100%** بصورة مستقلة لكل حزمة Go موزعة، وتفرضها CI |
 | التغطية السلوكية | ترتبط الميزات الأساسية المتحقق منها بأدلة آلية، بينما يبقى التوافق البصري داخل العملاء بوابة غير مكتملة قبل v1 |
 | المنصات | يعمل CI على Linux وWindows وmacOS باستخدام Go 1.23 وخط إصدار Go الحالي |
 | التزامن | كاشف سباقات البيانات واختبارات إنشاء التقارير المتزامن |

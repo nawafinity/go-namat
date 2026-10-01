@@ -261,12 +261,12 @@ func (s *renderState) linkNode(value any) (*xmlNode, error) {
 }
 
 func (s *renderState) htmlNode(value any) (*xmlNode, error) {
-	if kind := expr.KindOf(value); kind == valuetype.Missing || kind == valuetype.Null {
-		return nil, fmt.Errorf("HTML value is %s", kind)
-	}
 	html, err := expr.Format(value)
 	if err != nil {
-		return nil, fmt.Errorf("HTML value: %w", err)
+		return nil, fmt.Errorf("HTML value is %s", expr.KindOf(value))
+	}
+	if kind := expr.KindOf(value); kind == valuetype.Missing || kind == valuetype.Null {
+		return nil, fmt.Errorf("HTML value is %s", kind)
 	}
 	partName := s.pkg.uniquePartName("word", "namat-html-", "html")
 	if err := s.addGeneratedPart(partName, []byte(html), zip.Deflate); err != nil {
@@ -392,25 +392,34 @@ func expandTextMarkup(root *xmlNode, options Options) error {
 				children = append(children, child)
 				continue
 			}
-			text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
-			parts := strings.Split(text, "\n")
-			for index, part := range parts {
-				if index > 0 {
-					children = append(children, elementWithPrefix("w", "br"))
-				}
-				if part == "" {
-					continue
-				}
-				copy := child.clone()
-				if err := setTextOfNode(copy, part); err != nil {
-					return err
-				}
-				children = append(children, copy)
-			}
+			// The text is read from this same <w:t> node, so the cloned node always
+			// contains a text node whenever this newline branch is reached.
+			markup, _ := splitTextMarkup(child, text)
+			children = append(children, markup...)
 		}
 		run.Children = children
 	}
 	return nil
+}
+
+func splitTextMarkup(child *xmlNode, text string) ([]*xmlNode, error) {
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	parts := strings.Split(text, "\n")
+	result := make([]*xmlNode, 0, len(parts)*2-1)
+	for index, part := range parts {
+		if index > 0 {
+			result = append(result, elementWithPrefix("w", "br"))
+		}
+		if part == "" {
+			continue
+		}
+		copy := child.clone()
+		if err := setTextOfNode(copy, part); err != nil {
+			return nil, fmt.Errorf("split text markup: %w", err)
+		}
+		result = append(result, copy)
+	}
+	return result, nil
 }
 
 func valueField(value any, name string) (any, bool) {

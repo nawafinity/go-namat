@@ -184,7 +184,7 @@ func builtinFunctions() map[string]expr.Function {
 			return kind != value.Missing && kind != value.Null, nil
 		}),
 		"empty": builtin([]value.Kind{value.Any}, value.Bool, func(_ context.Context, args ...any) (any, error) {
-			if expr.KindOf(args[0]) == value.Missing || expr.KindOf(args[0]) == value.Null {
+			if expr.KindOf(args[0]) == value.Missing {
 				return true, nil
 			}
 			reflected := reflect.ValueOf(args[0])
@@ -193,6 +193,9 @@ func builtinFunctions() map[string]expr.Function {
 					return true, nil
 				}
 				reflected = reflected.Elem()
+			}
+			if !reflected.IsValid() {
+				return true, nil
 			}
 			switch reflected.Kind() {
 			case reflect.String, reflect.Array, reflect.Slice, reflect.Map:

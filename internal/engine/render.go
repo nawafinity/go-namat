@@ -59,6 +59,13 @@ func (s *renderState) declare(name string, value any) error {
 	return nil
 }
 
+func (s *renderState) declareLoopValues(name string, item any, loop map[string]any) error {
+	if err := s.declare(name, item); err != nil {
+		return err
+	}
+	return s.declare("loop", loop)
+}
+
 func (s *renderState) processNode(node *xmlNode) error {
 	if err := s.ctx.Err(); err != nil {
 		return err
@@ -200,10 +207,7 @@ func (s *renderState) processSequence(children []*xmlNode) ([]*xmlNode, error) {
 					"last":   itemIndex == len(items)-1,
 					"parent": parentLoop,
 				}
-				if err := childState.declare(command.Variable, item); err != nil {
-					return nil, s.commandError(command, err)
-				}
-				if err := childState.declare("loop", loop); err != nil {
+				if err := childState.declareLoopValues(command.Variable, item, loop); err != nil {
 					return nil, s.commandError(command, err)
 				}
 				segment := cloneNodes(children[index+1 : end])
@@ -336,8 +340,6 @@ func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 			// Structural commands are removed by sequence processing. Reaching this
 			// path means a directive was placed inline.
 			return s.commandError(command, fmt.Errorf("%s must occupy its own paragraph or table row", command.Type))
-		default:
-			return s.commandError(command, fmt.Errorf("unsupported command type %s", command.Type))
 		}
 	}
 	return finalizeParagraph(paragraph, actions, s.template.options)

@@ -74,10 +74,9 @@ go test -race ./...
 go test -run '^$' -bench . -benchmem ./...
 ```
 
-CI enforces independent statement-coverage floors: 85% for the public facade,
-90% for the rendering engine, 70% for the expression engine, 95% for exact
-value types, 90% for the CLI, and 100% for the complete example. Generate a
-combined local profile with:
+CI requires 100% statement coverage independently for the public facade, the
+rendering engine, the expression engine, exact value types, the CLI, and both
+runnable examples. Generate a combined local profile with:
 
 ```bash
 go test -coverprofile=coverage-all.out ./...

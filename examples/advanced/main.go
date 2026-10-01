@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -19,10 +20,13 @@ import (
 	"github.com/nawafinity/go-namat"
 )
 
+var exit = os.Exit
+var encodePNG = func(writer io.Writer, source image.Image) error { return png.Encode(writer, source) }
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "advanced example:", err)
-		os.Exit(1)
+		exit(1)
 	}
 }
 
@@ -88,10 +92,7 @@ func repeatReportData(data any, repeat int) (any, error) {
 	expanded := make([]any, 0, len(departments)*repeat)
 	for batch := 1; batch <= repeat; batch++ {
 		for _, department := range departments {
-			clone, err := cloneJSONValue(department)
-			if err != nil {
-				return nil, err
-			}
+			clone := cloneJSONValue(department)
 			object, ok := clone.(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("department must be an object, got %T", clone)
@@ -128,30 +129,22 @@ func repeatReportData(data any, repeat int) (any, error) {
 	return root, nil
 }
 
-func cloneJSONValue(value any) (any, error) {
+func cloneJSONValue(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		clone := make(map[string]any, len(typed))
 		for key, item := range typed {
-			copied, err := cloneJSONValue(item)
-			if err != nil {
-				return nil, err
-			}
-			clone[key] = copied
+			clone[key] = cloneJSONValue(item)
 		}
-		return clone, nil
+		return clone
 	case []any:
 		clone := make([]any, len(typed))
 		for index, item := range typed {
-			copied, err := cloneJSONValue(item)
-			if err != nil {
-				return nil, err
-			}
-			clone[index] = copied
+			clone[index] = cloneJSONValue(item)
 		}
-		return clone, nil
+		return clone
 	default:
-		return value, nil
+		return value
 	}
 }
 
@@ -313,7 +306,7 @@ func sparkline(args ...any) (any, error) {
 		}
 	}
 	var encoded bytes.Buffer
-	if err := png.Encode(&encoded, canvas); err != nil {
+	if err := encodePNG(&encoded, canvas); err != nil {
 		return nil, err
 	}
 	return namat.Image{Data: encoded.Bytes(), Extension: "png", Width: 5.4, Height: 1.35, Alt: "Progress chart for " + fmt.Sprint(args[1])}, nil

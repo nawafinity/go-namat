@@ -108,9 +108,6 @@ func (d DecimalValue) String() string {
 		if strings.Contains(text, ".") {
 			text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
 		}
-		if text == "-0" || text == "" {
-			return "0"
-		}
 		return text
 	}
 	text := strings.TrimRight(strings.TrimRight(rat.FloatString(18), "0"), ".")

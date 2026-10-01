@@ -28,6 +28,10 @@ func TestDecimalExactArithmeticAndFormatting(t *testing.T) {
 	if a.Neg().String() != "-0.1" || a.Cmp(b) >= 0 {
 		t.Fatal("negation or comparison failed")
 	}
+	tinyNegative, _ := ParseDecimal("-1/30000000000000000000")
+	if tinyNegative.String() != "0" {
+		t.Fatalf("tiny rounded decimal = %q", tinyNegative.String())
+	}
 }
 
 func TestDecimalConstructionAndErrors(t *testing.T) {
