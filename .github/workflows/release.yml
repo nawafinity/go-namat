@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Install LibreOffice Writer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes libreoffice-writer
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go test -race ./...
+      - name: Convert public compatibility fixture
+        env:
+          NAMAT_REQUIRE_LIBREOFFICE: "1"
+        run: go test -run '^TestLibreOfficeConvertsCompatibilityFixture$' -count=1 ./internal/engine
+      - run: go test -run '^$' -fuzz=FuzzParseCommand -fuzztime=60s ./internal/engine
+      - run: go test -run '^$' -fuzz=FuzzReadPackage -fuzztime=60s ./internal/engine
+      - run: go test -run '^$' -fuzz=FuzzRenderCommandText -fuzztime=60s ./internal/engine
+      - run: go test -run '^$' -fuzz=FuzzRenderLimits -fuzztime=60s ./internal/engine
+      - run: go test -run '^$' -fuzz=FuzzCompileAndEvaluate -fuzztime=60s ./internal/expr
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Install archive tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes zip
+      - name: Build release archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist stage
+          for target in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64 windows-arm64; do
+            goos="${target%-*}"
+            goarch="${target#*-}"
+            directory="stage/namat_${VERSION}_${goos}_${goarch}"
+            mkdir -p "$directory"
+            binary="$directory/namat"
+            if [ "$goos" = windows ]; then binary="${binary}.exe"; fi
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "$binary" ./cmd/namat
+            cp LICENSE README.md "$directory/"
+            if [ "$goos" = windows ]; then
+              (cd stage && zip -q -r "../dist/namat_${VERSION}_${goos}_${goarch}.zip" "namat_${VERSION}_${goos}_${goarch}")
+            else
+              tar -C stage -czf "dist/namat_${VERSION}_${goos}_${goarch}.tar.gz" "namat_${VERSION}_${goos}_${goarch}"
+            fi
+          done
+          (cd dist && sha256sum namat_* > checksums.txt)
+      - name: Generate build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: "dist/*"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --verify-tag --generate-notes --title "Namat ${GITHUB_REF_NAME}"

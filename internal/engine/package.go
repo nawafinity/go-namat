@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/flate"
+	"context"
 	"fmt"
 	"io"
 	"path"
@@ -99,8 +100,13 @@ func (p *docxPackage) bytes() ([]byte, error) {
 }
 
 func (p *docxPackage) bytesWithCompression(level int) ([]byte, error) {
+	return p.bytesWithCompressionLimit(context.Background(), level, 0)
+}
+
+func (p *docxPackage) bytesWithCompressionLimit(ctx context.Context, level int, maxBytes int64) ([]byte, error) {
 	var out bytes.Buffer
-	writer := zip.NewWriter(&out)
+	destination := &boundedPackageWriter{ctx: ctx, destination: &out, limit: maxBytes}
+	writer := zip.NewWriter(destination)
 	writer.RegisterCompressor(zip.Deflate, func(destination io.Writer) (io.WriteCloser, error) {
 		return flate.NewWriter(destination, level)
 	})
@@ -144,11 +150,64 @@ func (p *docxPackage) bytesWithCompression(level int) ([]byte, error) {
 			return nil, fmt.Errorf("write package part %s: %w", name, err)
 		}
 	}
-	_ = writer.Close()
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close DOCX package: %w", err)
+	}
 	return out.Bytes(), nil
 }
 
+type boundedPackageWriter struct {
+	ctx         context.Context
+	destination *bytes.Buffer
+	limit       int64
+}
+
+func (w *boundedPackageWriter) Write(data []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if w.limit > 0 && int64(w.destination.Len())+int64(len(data)) > w.limit {
+		remaining := w.limit - int64(w.destination.Len())
+		written := 0
+		if remaining > 0 {
+			written, _ = w.destination.Write(data[:int(remaining)])
+		}
+		return written, fmt.Errorf("%w: rendered document exceeds MaxOutputBytes (%d)", ErrSecurityLimit, w.limit)
+	}
+	return w.destination.Write(data)
+}
+
+func (p *docxPackage) uncompressedBytes() int64 {
+	var total int64
+	for _, part := range p.Parts {
+		total += int64(len(part.Data))
+	}
+	return total
+}
+
+func (p *docxPackage) validateLimits(maxPartBytes, maxUncompressedBytes int64, maxParts int) error {
+	if len(p.Parts) > maxParts {
+		return fmt.Errorf("%w: DOCX package contains %d parts; limit is %d", ErrSecurityLimit, len(p.Parts), maxParts)
+	}
+	var total int64
+	for name, part := range p.Parts {
+		size := int64(len(part.Data))
+		if size > maxPartBytes {
+			return fmt.Errorf("%w: package part %s exceeds size limit", ErrSecurityLimit, name)
+		}
+		if size > maxUncompressedBytes-total {
+			return fmt.Errorf("%w: DOCX uncompressed content exceeds size limit", ErrSecurityLimit)
+		}
+		total += size
+	}
+	return nil
+}
+
 func isTemplateXMLPart(name string, data []byte, openDelimiter string) bool {
+	_ = data
+	_ = openDelimiter
 	clean := filepath.ToSlash(name)
-	return strings.HasPrefix(clean, "word/") && strings.HasSuffix(strings.ToLower(clean), ".xml") && bytes.Contains(data, []byte(openDelimiter))
+	// The delimiter itself may be split by Word across multiple XML text
+	// nodes, so raw-byte containment is not a valid precondition here.
+	return strings.HasPrefix(clean, "word/") && strings.HasSuffix(strings.ToLower(clean), ".xml")
 }

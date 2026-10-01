@@ -8,7 +8,7 @@ import (
 
 func TestStructuredErrorsExposeCategories(t *testing.T) {
 	inner := errors.New("synthetic failure")
-	templateErr := &Error{Part: "word/document.xml", Command: "INS value", Err: inner}
+	templateErr := &Error{Part: "word/document.xml", Command: "value", Err: inner}
 	if !errors.Is(templateErr, inner) || !strings.Contains(templateErr.Error(), "word/document.xml") {
 		t.Fatalf("unexpected template error: %v", templateErr)
 	}

@@ -1,31 +1,64 @@
 package expr
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/nawafinity/go-namat/internal/value"
 )
 
-// Function is a safe host function callable by template expressions.
-type Function func(args ...any) (any, error)
-
-// Context holds root data, local variables, and registered functions.
-type Context struct {
-	Root      any
-	Variables map[string]any
-	Functions map[string]Function
+// Function is a typed host function callable by template expressions.
+type Function struct {
+	Signature Signature
+	Call      func(context.Context, ...any) (any, error)
 }
 
-// Eval evaluates a compiled expression.
+// Context holds immutable root data, lexical variables, registered functions,
+// and an evaluation budget. SharedSteps makes the budget cumulative across
+// multiple programs in one render.
+type Context struct {
+	Context     context.Context
+	Root        any
+	Variables   map[string]any
+	Functions   map[string]Function
+	MaxSteps    int
+	SharedSteps *int
+	steps       int
+}
+
+func (c *Context) step() error {
+	if c == nil {
+		return nil
+	}
+	steps := &c.steps
+	if c.SharedSteps != nil {
+		steps = c.SharedSteps
+	}
+	*steps++
+	if c.MaxSteps > 0 && *steps > c.MaxSteps {
+		return fmt.Errorf("namat expression: evaluation step limit exceeded (%d)", c.MaxSteps)
+	}
+	if c.Context != nil {
+		return c.Context.Err()
+	}
+	return nil
+}
+
 func (p *Program) Eval(ctx *Context) (any, error) {
 	if p == nil || p.root == nil {
 		return nil, errors.New("namat expression: empty program")
 	}
 	if ctx == nil {
 		ctx = &Context{}
+	}
+	if ctx.SharedSteps == nil {
+		ctx.steps = 0
 	}
 	return p.root.eval(ctx)
 }
@@ -36,20 +69,28 @@ type node interface {
 
 type literalNode struct{ value any }
 
-func (n literalNode) eval(*Context) (any, error) { return n.value, nil }
+func (n literalNode) eval(ctx *Context) (any, error) {
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
+	return n.value, nil
+}
 
 type arrayNode struct{ values []node }
 
 func (n arrayNode) eval(ctx *Context) (any, error) {
-	values := make([]any, len(n.values))
-	for index, value := range n.values {
-		resolved, err := value.eval(ctx)
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
+	items := make([]any, len(n.values))
+	for index, item := range n.values {
+		resolved, err := item.eval(ctx)
 		if err != nil {
 			return nil, err
 		}
-		values[index] = resolved
+		items[index] = resolved
 	}
-	return values, nil
+	return items, nil
 }
 
 type objectEntry struct {
@@ -60,58 +101,39 @@ type objectEntry struct {
 type objectNode struct{ entries []objectEntry }
 
 func (n objectNode) eval(ctx *Context) (any, error) {
-	value := make(map[string]any, len(n.entries))
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
+	result := make(map[string]any, len(n.entries))
 	for _, entry := range n.entries {
 		resolved, err := entry.value.eval(ctx)
 		if err != nil {
 			return nil, err
 		}
-		value[entry.key] = resolved
+		result[entry.key] = resolved
 	}
-	return value, nil
+	return result, nil
 }
 
-type conditionalNode struct {
-	condition node
-	whenTrue  node
-	whenFalse node
-}
-
-func (n conditionalNode) eval(ctx *Context) (any, error) {
-	condition, err := n.condition.eval(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if truthy(condition) {
-		return n.whenTrue.eval(ctx)
-	}
-	return n.whenFalse.eval(ctx)
-}
-
-type identifierNode struct{ name string }
-
-type unknownIdentifierError struct{ name string }
-
-func (e unknownIdentifierError) Error() string {
-	return fmt.Sprintf("namat expression: unknown identifier %q", e.name)
+type identifierNode struct {
+	name string
+	pos  int
 }
 
 func (n identifierNode) eval(ctx *Context) (any, error) {
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
 	if ctx.Variables != nil {
-		if value, ok := ctx.Variables[n.name]; ok {
-			return value, nil
+		if resolved, ok := ctx.Variables[n.name]; ok {
+			return resolved, nil
 		}
 	}
-	if ctx.Functions != nil {
-		if fn, ok := ctx.Functions[n.name]; ok {
-			return fn, nil
-		}
+	if resolved, ok := lookup(ctx.Root, n.name); ok {
+		return resolved, nil
 	}
-	value, ok := lookup(ctx.Root, n.name)
-	if !ok {
-		return nil, unknownIdentifierError{name: n.name}
-	}
-	return value, nil
+	candidates := append(keysOf(ctx.Root), mapKeys(ctx.Variables)...)
+	return nil, unknownNameError("identifier", n.name, candidates)
 }
 
 type memberNode struct {
@@ -121,200 +143,80 @@ type memberNode struct {
 }
 
 func (n memberNode) eval(ctx *Context) (any, error) {
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
 	target, err := n.target.eval(ctx)
 	if err != nil {
-		var unknown unknownIdentifierError
-		if n.optional && errors.As(err, &unknown) {
-			return nil, nil
+		if n.optional {
+			return value.MissingValue{}, nil
 		}
 		return nil, err
 	}
-	if isNil(target) {
+	if isMissing(target) || isNil(target) {
 		if n.optional {
-			return nil, nil
+			return value.MissingValue{}, nil
 		}
-		return nil, errors.New("namat expression: cannot access a property of null")
+		return nil, errors.New("namat expression: cannot access a property of missing or null")
 	}
 	key, err := n.key.eval(ctx)
 	if err != nil {
 		return nil, err
 	}
-	value, ok := lookup(target, key)
-	if !ok {
-		if member, found := builtinMember(target, stringify(key)); found {
-			return member, nil
-		}
-		if n.optional {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("namat expression: property %v not found", key)
+	resolved, ok := lookup(target, key)
+	if ok {
+		return resolved, nil
 	}
-	return value, nil
-}
-
-func builtinMember(target any, name string) (any, bool) {
-	v := reflect.ValueOf(target)
-	for v.IsValid() && (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) {
-		if v.IsNil() {
-			return nil, false
-		}
-		v = v.Elem()
+	if n.optional {
+		return value.MissingValue{}, nil
 	}
-	if !v.IsValid() {
-		return nil, false
-	}
-	switch v.Kind() {
-	case reflect.String:
-		text := v.String()
-		switch name {
-		case "length":
-			return len([]rune(text)), true
-		case "trim":
-			return Function(func(args ...any) (any, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("trim expects no arguments")
-				}
-				return strings.TrimSpace(text), nil
-			}), true
-		case "toUpperCase", "upper":
-			return Function(func(args ...any) (any, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("%s expects no arguments", name)
-				}
-				return strings.ToUpper(text), nil
-			}), true
-		case "toLowerCase", "lower":
-			return Function(func(args ...any) (any, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("%s expects no arguments", name)
-				}
-				return strings.ToLower(text), nil
-			}), true
-		case "contains", "includes":
-			return Function(func(args ...any) (any, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("%s expects one argument", name)
-				}
-				return strings.Contains(text, stringify(args[0])), nil
-			}), true
-		case "startsWith":
-			return Function(func(args ...any) (any, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("startsWith expects one argument")
-				}
-				return strings.HasPrefix(text, stringify(args[0])), nil
-			}), true
-		case "endsWith":
-			return Function(func(args ...any) (any, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("endsWith expects one argument")
-				}
-				return strings.HasSuffix(text, stringify(args[0])), nil
-			}), true
-		case "slice":
-			return Function(func(args ...any) (any, error) {
-				if len(args) < 1 || len(args) > 2 {
-					return nil, fmt.Errorf("slice expects one or two arguments")
-				}
-				runes := []rune(text)
-				start, ok := integer(args[0])
-				if !ok {
-					return nil, fmt.Errorf("slice start must be an integer")
-				}
-				end := len(runes)
-				if len(args) == 2 {
-					end, ok = integer(args[1])
-					if !ok {
-						return nil, fmt.Errorf("slice end must be an integer")
-					}
-				}
-				start, end = normalizeSliceBounds(start, end, len(runes))
-				return string(runes[start:end]), nil
-			}), true
-		}
-	case reflect.Array, reflect.Slice:
-		switch name {
-		case "length":
-			return v.Len(), true
-		case "join":
-			return Function(func(args ...any) (any, error) {
-				if len(args) > 1 {
-					return nil, fmt.Errorf("join expects zero or one argument")
-				}
-				separator := ","
-				if len(args) == 1 {
-					separator = stringify(args[0])
-				}
-				items := make([]string, v.Len())
-				for index := 0; index < v.Len(); index++ {
-					items[index] = stringify(v.Index(index).Interface())
-				}
-				return strings.Join(items, separator), nil
-			}), true
-		case "includes", "contains":
-			return Function(func(args ...any) (any, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("%s expects one argument", name)
-				}
-				for index := 0; index < v.Len(); index++ {
-					if equal(v.Index(index).Interface(), args[0]) {
-						return true, nil
-					}
-				}
-				return false, nil
-			}), true
-		}
-	case reflect.Map:
-		if name == "length" {
-			return v.Len(), true
-		}
-	}
-	return nil, false
-}
-
-func normalizeSliceBounds(start, end, length int) (int, int) {
-	if start < 0 {
-		start = length + start
-	}
-	if end < 0 {
-		end = length + end
-	}
-	if start < 0 {
-		start = 0
-	}
-	if start > length {
-		start = length
-	}
-	if end < start {
-		end = start
-	}
-	if end > length {
-		end = length
-	}
-	return start, end
+	name := fmt.Sprint(key)
+	return nil, unknownNameError("property", name, keysOf(target))
 }
 
 type callNode struct {
-	callee node
-	args   []node
+	name string
+	args []node
+	pos  int
 }
 
 func (n callNode) eval(ctx *Context) (any, error) {
-	callee, err := n.callee.eval(ctx)
-	if err != nil {
+	if err := ctx.step(); err != nil {
 		return nil, err
 	}
-	args := make([]any, len(n.args))
-	for i, argNode := range n.args {
-		args[i], err = argNode.eval(ctx)
+	function, ok := ctx.Functions[n.name]
+	if !ok || function.Call == nil {
+		return nil, unknownNameError("function", n.name, functionNames(ctx.Functions))
+	}
+	arguments := make([]any, len(n.args))
+	for index, argument := range n.args {
+		resolved, err := argument.eval(ctx)
 		if err != nil {
 			return nil, err
 		}
+		arguments[index] = resolved
 	}
-	if fn, ok := callee.(Function); ok {
-		return fn(args...)
+	if err := validateRuntimeArguments(n.name, arguments, function.Signature); err != nil {
+		return nil, err
 	}
-	return callReflect(callee, args)
+	arguments = normalizeRuntimeArguments(arguments, function.Signature)
+	callContext := ctx.Context
+	if callContext == nil {
+		callContext = context.Background()
+	}
+	result, err := function.Call(callContext, arguments...)
+	if err != nil {
+		return nil, fmt.Errorf("namat expression: function %s: %w", n.name, err)
+	}
+	if expected := function.Signature.Returns; expected != "" && expected != value.Any && expected != value.Rich {
+		if actual := KindOf(result); actual != expected {
+			return nil, fmt.Errorf("namat expression: function %q declared %s result but returned %s", n.name, expected, actual)
+		}
+	}
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 type unaryNode struct {
@@ -323,25 +225,26 @@ type unaryNode struct {
 }
 
 func (n unaryNode) eval(ctx *Context) (any, error) {
-	value, err := n.value.eval(ctx)
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
+	resolved, err := n.value.eval(ctx)
 	if err != nil {
 		return nil, err
 	}
 	switch n.op {
 	case "!":
-		return !truthy(value), nil
-	case "-":
-		number, ok := number(value)
-		if !ok {
-			return nil, fmt.Errorf("namat expression: unary - expects a number, got %T", value)
+		if KindOf(resolved) != value.Bool {
+			return nil, fmt.Errorf("namat expression: ! expects bool, got %s", kindName(resolved))
 		}
-		return -number, nil
+		return !boolOf(resolved), nil
 	case "+":
-		number, ok := number(value)
-		if !ok {
-			return nil, fmt.Errorf("namat expression: unary + expects a number, got %T", value)
+		if !isNumeric(resolved) {
+			return nil, fmt.Errorf("namat expression: unary + expects a number, got %s", kindName(resolved))
 		}
-		return number, nil
+		return resolved, nil
+	case "-":
+		return negate(resolved)
 	default:
 		return nil, fmt.Errorf("namat expression: unsupported unary operator %q", n.op)
 	}
@@ -353,22 +256,28 @@ type binaryNode struct {
 }
 
 func (n binaryNode) eval(ctx *Context) (any, error) {
+	if err := ctx.step(); err != nil {
+		return nil, err
+	}
 	left, err := n.left.eval(ctx)
 	if err != nil {
 		return nil, err
 	}
 	switch n.op {
 	case "??":
-		if !isNil(left) {
+		if !isMissing(left) && !isNil(left) {
 			return left, nil
 		}
-	case "||":
-		if truthy(left) {
-			return left, nil
+	case "||", "&&":
+		if KindOf(left) != value.Bool {
+			return nil, fmt.Errorf("namat expression: %s expects bool operands, got %s", n.op, kindName(left))
 		}
-	case "&&":
-		if !truthy(left) {
-			return left, nil
+		boolean := boolOf(left)
+		if n.op == "||" && boolean {
+			return true, nil
+		}
+		if n.op == "&&" && !boolean {
+			return false, nil
 		}
 	}
 	right, err := n.right.eval(ctx)
@@ -376,22 +285,147 @@ func (n binaryNode) eval(ctx *Context) (any, error) {
 		return nil, err
 	}
 	switch n.op {
-	case "??", "||", "&&":
+	case "??":
 		return right, nil
+	case "||", "&&":
+		if KindOf(right) != value.Bool {
+			return nil, fmt.Errorf("namat expression: %s expects bool operands, got %s", n.op, kindName(right))
+		}
+		return boolOf(right), nil
 	case "+":
-		if l, ok := number(left); ok {
-			if r, ok := number(right); ok {
-				return l + r, nil
+		if KindOf(left) == value.String {
+			if KindOf(right) != value.String {
+				return nil, fmt.Errorf("namat expression: + cannot combine string and %s", kindName(right))
 			}
+			return stringOf(left) + stringOf(right), nil
 		}
-		return stringify(left) + stringify(right), nil
+		return numericOperation(n.op, left, right)
 	case "-", "*", "/", "%":
-		l, lok := number(left)
-		r, rok := number(right)
-		if !lok || !rok {
-			return nil, fmt.Errorf("namat expression: %s expects numbers", n.op)
+		return numericOperation(n.op, left, right)
+	case "==", "!=":
+		equal, err := equalValues(left, right)
+		if err != nil {
+			return nil, err
 		}
-		switch n.op {
+		if n.op == "!=" {
+			return !equal, nil
+		}
+		return equal, nil
+	case ">", ">=", "<", "<=":
+		return compareValues(n.op, left, right)
+	default:
+		return nil, fmt.Errorf("namat expression: unsupported operator %q", n.op)
+	}
+}
+
+func validateRuntimeArguments(name string, arguments []any, signature Signature) error {
+	if (!signature.Variadic && len(arguments) != len(signature.Params)) || (signature.Variadic && len(arguments) < len(signature.Params)) {
+		return fmt.Errorf("namat expression: function %q expects %d arguments, got %d", name, len(signature.Params), len(arguments))
+	}
+	for index, expected := range signature.Params {
+		if expected == value.Any {
+			continue
+		}
+		actual := KindOf(arguments[index])
+		if actual != expected {
+			return fmt.Errorf("namat expression: function %q argument %d expects %s, got %s", name, index+1, expected, actual)
+		}
+	}
+	return nil
+}
+
+func normalizeRuntimeArguments(arguments []any, signature Signature) []any {
+	for index, expected := range signature.Params {
+		if index >= len(arguments) || expected == value.Any || expected == value.Rich {
+			continue
+		}
+		switch expected {
+		case value.Bool:
+			arguments[index] = boolOf(arguments[index])
+		case value.String:
+			arguments[index] = stringOf(arguments[index])
+		case value.Int:
+			arguments[index] = int64Of(arguments[index])
+		case value.Uint:
+			arguments[index] = uint64Of(arguments[index])
+		case value.Float:
+			arguments[index] = float64Of(arguments[index])
+		case value.Decimal:
+			arguments[index], _ = exactDecimal(arguments[index])
+		}
+	}
+	return arguments
+}
+
+func KindOf(input any) value.Kind {
+	if isMissing(input) {
+		return value.Missing
+	}
+	if isNil(input) {
+		return value.Null
+	}
+	reflected := reflect.ValueOf(input)
+	for reflected.IsValid() && (reflected.Kind() == reflect.Pointer || reflected.Kind() == reflect.Interface) {
+		if reflected.IsNil() {
+			return value.Null
+		}
+		reflected = reflected.Elem()
+	}
+	if !reflected.IsValid() {
+		return value.Null
+	}
+	if reflected.CanInterface() {
+		if _, ok := reflected.Interface().(value.DecimalValue); ok {
+			return value.Decimal
+		}
+	}
+	switch reflected.Kind() {
+	case reflect.Bool:
+		return value.Bool
+	case reflect.String:
+		return value.String
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return value.Int
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return value.Uint
+	case reflect.Float32, reflect.Float64:
+		return value.Float
+	case reflect.Array, reflect.Slice:
+		return value.List
+	case reflect.Map, reflect.Struct:
+		return value.Object
+	default:
+		return value.Any
+	}
+}
+
+func AsBool(input any) (bool, bool) {
+	if KindOf(input) != value.Bool {
+		return false, false
+	}
+	return boolOf(input), true
+}
+
+func kindName(input any) value.Kind { return KindOf(input) }
+
+func isNumeric(input any) bool {
+	kind := KindOf(input)
+	return kind == value.Int || kind == value.Uint || kind == value.Decimal || kind == value.Float
+}
+
+func numericOperation(operator string, left, right any) (any, error) {
+	leftKind, rightKind := KindOf(left), KindOf(right)
+	if !isNumeric(left) || !isNumeric(right) {
+		return nil, fmt.Errorf("namat expression: %s expects numeric operands, got %s and %s", operator, leftKind, rightKind)
+	}
+	if leftKind == value.Float || rightKind == value.Float {
+		if leftKind != value.Float || rightKind != value.Float {
+			return nil, fmt.Errorf("namat expression: exact and floating-point numbers cannot be mixed")
+		}
+		l, r := float64Of(left), float64Of(right)
+		switch operator {
+		case "+":
+			return l + r, nil
 		case "-":
 			return l - r, nil
 		case "*":
@@ -401,133 +435,280 @@ func (n binaryNode) eval(ctx *Context) (any, error) {
 				return nil, errors.New("namat expression: division by zero")
 			}
 			return l / r, nil
-		default:
+		case "%":
+			return nil, errors.New("namat expression: modulo does not accept floating-point operands")
+		}
+	}
+	if leftKind == value.Decimal || rightKind == value.Decimal || operator == "/" {
+		leftDecimal, err := exactDecimal(left)
+		if err != nil {
+			return nil, err
+		}
+		rightDecimal, err := exactDecimal(right)
+		if err != nil {
+			return nil, err
+		}
+		switch operator {
+		case "+":
+			return leftDecimal.Add(rightDecimal), nil
+		case "-":
+			return leftDecimal.Sub(rightDecimal), nil
+		case "*":
+			return leftDecimal.Mul(rightDecimal), nil
+		case "/":
+			result, err := leftDecimal.Quo(rightDecimal)
+			if err != nil {
+				return nil, fmt.Errorf("namat expression: %w", err)
+			}
+			return result, nil
+		case "%":
+			return nil, errors.New("namat expression: modulo accepts integer operands only")
+		}
+	}
+	if leftKind != rightKind {
+		return nil, fmt.Errorf("namat expression: signed and unsigned integers cannot be mixed")
+	}
+	if leftKind == value.Int {
+		l, r := int64Of(left), int64Of(right)
+		switch operator {
+		case "+":
+			if (r > 0 && l > math.MaxInt64-r) || (r < 0 && l < math.MinInt64-r) {
+				return nil, errors.New("namat expression: integer overflow")
+			}
+			return l + r, nil
+		case "-":
+			if (r < 0 && l > math.MaxInt64+r) || (r > 0 && l < math.MinInt64+r) {
+				return nil, errors.New("namat expression: integer overflow")
+			}
+			return l - r, nil
+		case "*":
+			if l != 0 && (l == math.MinInt64 && r == -1 || r != 0 && (l*r)/r != l) {
+				return nil, errors.New("namat expression: integer overflow")
+			}
+			return l * r, nil
+		case "%":
 			if r == 0 {
 				return nil, errors.New("namat expression: modulo by zero")
 			}
-			return math.Mod(l, r), nil
+			return l % r, nil
 		}
-	case "==", "===":
-		return equal(left, right), nil
-	case "!=", "!==":
-		return !equal(left, right), nil
-	case ">", ">=", "<", "<=":
-		return compare(n.op, left, right)
+	}
+	l, r := uint64Of(left), uint64Of(right)
+	switch operator {
+	case "+":
+		if math.MaxUint64-l < r {
+			return nil, errors.New("namat expression: unsigned integer overflow")
+		}
+		return l + r, nil
+	case "-":
+		if l < r {
+			return nil, errors.New("namat expression: unsigned integer underflow")
+		}
+		return l - r, nil
+	case "*":
+		if r != 0 && l > math.MaxUint64/r {
+			return nil, errors.New("namat expression: unsigned integer overflow")
+		}
+		return l * r, nil
+	case "%":
+		if r == 0 {
+			return nil, errors.New("namat expression: modulo by zero")
+		}
+		return l % r, nil
+	}
+	return nil, fmt.Errorf("namat expression: unsupported numeric operator %q", operator)
+}
+
+func negate(input any) (any, error) {
+	switch KindOf(input) {
+	case value.Int:
+		integer := int64Of(input)
+		if integer == math.MinInt64 {
+			return nil, errors.New("namat expression: integer overflow")
+		}
+		return -integer, nil
+	case value.Decimal:
+		return indirect(reflect.ValueOf(input)).Interface().(value.DecimalValue).Neg(), nil
+	case value.Float:
+		return -float64Of(input), nil
 	default:
-		return nil, fmt.Errorf("namat expression: unsupported operator %q", n.op)
+		return nil, fmt.Errorf("namat expression: unary - expects a signed number, got %s", kindName(input))
 	}
 }
 
-type templateNode struct{ text string }
-
-func (n templateNode) eval(ctx *Context) (any, error) {
-	var out strings.Builder
-	for i := 0; i < len(n.text); {
-		start := strings.Index(n.text[i:], "${")
-		if start < 0 {
-			out.WriteString(n.text[i:])
-			break
+func equalValues(left, right any) (bool, error) {
+	leftKind, rightKind := KindOf(left), KindOf(right)
+	if leftKind == value.Missing || rightKind == value.Missing {
+		if leftKind != rightKind {
+			return false, fmt.Errorf("namat expression: cannot compare %s and %s", leftKind, rightKind)
 		}
-		start += i
-		out.WriteString(n.text[i:start])
-		end, err := findTemplateEnd(n.text, start+2)
-		if err != nil {
-			return nil, err
-		}
-		program, err := Compile(n.text[start+2 : end])
-		if err != nil {
-			return nil, err
-		}
-		value, err := program.Eval(ctx)
-		if err != nil {
-			return nil, err
-		}
-		out.WriteString(stringify(value))
-		i = end + 1
+		return true, nil
 	}
-	return out.String(), nil
+	if leftKind == value.Null || rightKind == value.Null {
+		if leftKind != rightKind {
+			return false, fmt.Errorf("namat expression: cannot compare %s and %s", leftKind, rightKind)
+		}
+		return true, nil
+	}
+	if isExactNumberKind(leftKind) && isExactNumberKind(rightKind) {
+		leftDecimal, _ := exactDecimal(left)
+		rightDecimal, _ := exactDecimal(right)
+		return leftDecimal.Cmp(rightDecimal) == 0, nil
+	}
+	if leftKind != rightKind {
+		return false, fmt.Errorf("namat expression: cannot compare %s and %s", leftKind, rightKind)
+	}
+	if leftKind == value.Float {
+		return float64Of(left) == float64Of(right), nil
+	}
+	if leftKind == value.String {
+		return stringOf(left) == stringOf(right), nil
+	}
+	if leftKind == value.Bool {
+		return boolOf(left) == boolOf(right), nil
+	}
+	leftValue, rightValue := indirect(reflect.ValueOf(left)), indirect(reflect.ValueOf(right))
+	return reflect.DeepEqual(leftValue.Interface(), rightValue.Interface()), nil
 }
 
-func findTemplateEnd(text string, start int) (int, error) {
-	depth := 0
-	quote := byte(0)
-	for i := start; i < len(text); i++ {
-		ch := text[i]
-		if quote != 0 {
-			if ch == '\\' {
-				i++
-				continue
-			}
-			if ch == quote {
-				quote = 0
-			}
-			continue
+func compareValues(operator string, left, right any) (bool, error) {
+	leftKind, rightKind := KindOf(left), KindOf(right)
+	comparison := 0
+	if isExactNumberKind(leftKind) && isExactNumberKind(rightKind) {
+		leftDecimal, _ := exactDecimal(left)
+		rightDecimal, _ := exactDecimal(right)
+		comparison = leftDecimal.Cmp(rightDecimal)
+	} else if leftKind == value.Float && rightKind == value.Float {
+		l, r := float64Of(left), float64Of(right)
+		if math.IsNaN(l) || math.IsNaN(r) {
+			return false, errors.New("namat expression: NaN is not orderable")
 		}
-		if ch == '\'' || ch == '"' || ch == '`' {
-			quote = ch
-			continue
+		if l < r {
+			comparison = -1
+		} else if l > r {
+			comparison = 1
 		}
-		switch ch {
-		case '{':
-			depth++
-		case '}':
-			if depth == 0 {
-				return i, nil
-			}
-			depth--
+	} else if leftKind == value.String {
+		if rightKind != value.String {
+			return false, fmt.Errorf("namat expression: cannot order %s and %s", leftKind, rightKind)
 		}
+		comparison = strings.Compare(stringOf(left), stringOf(right))
+	} else {
+		return false, fmt.Errorf("namat expression: cannot order %s and %s", leftKind, rightKind)
 	}
-	return 0, errors.New("namat expression: unterminated template interpolation")
+	switch operator {
+	case ">":
+		return comparison > 0, nil
+	case ">=":
+		return comparison >= 0, nil
+	case "<":
+		return comparison < 0, nil
+	case "<=":
+		return comparison <= 0, nil
+	default:
+		return false, fmt.Errorf("namat expression: unsupported comparison %q", operator)
+	}
+}
+
+func isExactNumberKind(kind value.Kind) bool {
+	return kind == value.Int || kind == value.Uint || kind == value.Decimal
+}
+
+func exactDecimal(input any) (value.DecimalValue, error) {
+	switch KindOf(input) {
+	case value.Int:
+		return value.DecimalFromInt(int64Of(input)), nil
+	case value.Uint:
+		return value.DecimalFromUint(uint64Of(input)), nil
+	case value.Decimal:
+		return indirect(reflect.ValueOf(input)).Interface().(value.DecimalValue), nil
+	default:
+		return value.DecimalValue{}, fmt.Errorf("namat expression: %s is not an exact number", kindName(input))
+	}
+}
+
+func int64Of(input any) int64 {
+	reflected := indirect(reflect.ValueOf(input))
+	return reflected.Int()
+}
+
+func uint64Of(input any) uint64 {
+	reflected := indirect(reflect.ValueOf(input))
+	return reflected.Uint()
+}
+
+func float64Of(input any) float64 {
+	reflected := indirect(reflect.ValueOf(input))
+	return reflected.Convert(reflect.TypeOf(float64(0))).Float()
+}
+
+func boolOf(input any) bool { return indirect(reflect.ValueOf(input)).Bool() }
+
+func stringOf(input any) string { return indirect(reflect.ValueOf(input)).String() }
+
+func indirect(reflected reflect.Value) reflect.Value {
+	for reflected.IsValid() && (reflected.Kind() == reflect.Pointer || reflected.Kind() == reflect.Interface) {
+		reflected = reflected.Elem()
+	}
+	return reflected
 }
 
 func lookup(target any, key any) (any, bool) {
-	if isNil(target) {
+	if isNil(target) || isMissing(target) {
 		return nil, false
 	}
-	v := reflect.ValueOf(target)
-	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-		if v.IsNil() {
+	reflected := reflect.ValueOf(target)
+	for reflected.Kind() == reflect.Pointer || reflected.Kind() == reflect.Interface {
+		if reflected.IsNil() {
 			return nil, false
 		}
-		v = v.Elem()
+		reflected = reflected.Elem()
 	}
-	switch v.Kind() {
+	switch reflected.Kind() {
 	case reflect.Map:
 		keyValue := reflect.ValueOf(key)
-		if keyValue.IsValid() && keyValue.Type().AssignableTo(v.Type().Key()) {
-			value := v.MapIndex(keyValue)
-			if value.IsValid() {
-				return value.Interface(), true
+		if keyValue.IsValid() && keyValue.Type().AssignableTo(reflected.Type().Key()) {
+			resolved := reflected.MapIndex(keyValue)
+			if resolved.IsValid() {
+				return resolved.Interface(), true
 			}
 		}
-		if v.Type().Key().Kind() == reflect.String {
-			value := v.MapIndex(reflect.ValueOf(stringify(key)).Convert(v.Type().Key()))
-			if value.IsValid() {
-				return value.Interface(), true
+		if reflected.Type().Key().Kind() == reflect.String {
+			name, ok := key.(string)
+			if !ok {
+				return nil, false
+			}
+			resolved := reflected.MapIndex(reflect.ValueOf(name).Convert(reflected.Type().Key()))
+			if resolved.IsValid() {
+				return resolved.Interface(), true
 			}
 		}
 	case reflect.Struct:
-		name := stringify(key)
-		typeOf := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := typeOf.Field(i)
-			jsonName := strings.Split(field.Tag.Get("json"), ",")[0]
-			if field.Name == name || strings.EqualFold(field.Name, name) || (jsonName != "" && jsonName != "-" && jsonName == name) {
-				value := v.Field(i)
-				if value.CanInterface() {
-					return value.Interface(), true
-				}
-			}
-		}
-	case reflect.Slice, reflect.Array:
-		index, ok := integer(key)
-		if !ok || index < 0 || index >= v.Len() {
+		name, ok := key.(string)
+		if !ok {
 			return nil, false
 		}
-		return v.Index(index).Interface(), true
+		typeOf := reflected.Type()
+		for index := 0; index < reflected.NumField(); index++ {
+			field := typeOf.Field(index)
+			jsonName := strings.Split(field.Tag.Get("json"), ",")[0]
+			lookupName := field.Name
+			if jsonName != "" && jsonName != "-" {
+				lookupName = jsonName
+			}
+			if lookupName == name && reflected.Field(index).CanInterface() {
+				return reflected.Field(index).Interface(), true
+			}
+		}
+	case reflect.Array, reflect.Slice:
+		index, ok := indexValue(key)
+		if !ok || index < 0 || index >= reflected.Len() {
+			return nil, false
+		}
+		return reflected.Index(index).Interface(), true
 	case reflect.String:
-		runes := []rune(v.String())
-		index, ok := integer(key)
+		index, ok := indexValue(key)
+		runes := []rune(reflected.String())
 		if !ok || index < 0 || index >= len(runes) {
 			return nil, false
 		}
@@ -536,177 +717,161 @@ func lookup(target any, key any) (any, bool) {
 	return nil, false
 }
 
-func callReflect(callee any, args []any) (any, error) {
-	v := reflect.ValueOf(callee)
-	if !v.IsValid() || v.Kind() != reflect.Func {
-		return nil, fmt.Errorf("namat expression: %T is not callable", callee)
-	}
-	t := v.Type()
-	minimum := t.NumIn()
-	if t.IsVariadic() {
-		minimum--
-	}
-	if (!t.IsVariadic() && len(args) != t.NumIn()) || (t.IsVariadic() && len(args) < minimum) {
-		return nil, fmt.Errorf("namat expression: function expects %d arguments, got %d", t.NumIn(), len(args))
-	}
-	values := make([]reflect.Value, len(args))
-	for i, arg := range args {
-		parameterIndex := i
-		if t.IsVariadic() && i >= t.NumIn()-1 {
-			parameterIndex = t.NumIn() - 1
+func indexValue(input any) (int, bool) {
+	switch KindOf(input) {
+	case value.Int:
+		integer := int64Of(input)
+		if integer < 0 || integer > int64(math.MaxInt) {
+			return 0, false
 		}
-		parameter := t.In(parameterIndex)
-		if t.IsVariadic() && i >= t.NumIn()-1 {
-			parameter = parameter.Elem()
+		return int(integer), true
+	case value.Uint:
+		unsigned := uint64Of(input)
+		if unsigned > uint64(math.MaxInt) {
+			return 0, false
 		}
-		value := reflect.ValueOf(arg)
-		if !value.IsValid() {
-			values[i] = reflect.Zero(parameter)
-		} else if value.Type().AssignableTo(parameter) {
-			values[i] = value
-		} else if value.Type().ConvertibleTo(parameter) {
-			values[i] = value.Convert(parameter)
-		} else {
-			return nil, fmt.Errorf("namat expression: argument %d has type %T, expected %s", i+1, arg, parameter)
-		}
-	}
-	results := v.Call(values)
-	if len(results) == 0 {
-		return nil, nil
-	}
-	if len(results) > 1 {
-		if err, ok := results[len(results)-1].Interface().(error); ok && err != nil {
-			return nil, err
-		}
-	}
-	return results[0].Interface(), nil
-}
-
-func truthy(value any) bool {
-	if isNil(value) {
-		return false
-	}
-	switch v := value.(type) {
-	case bool:
-		return v
-	case string:
-		return v != ""
-	default:
-		if number, ok := number(value); ok {
-			return number != 0 && !math.IsNaN(number)
-		}
-		return true
-	}
-}
-
-func number(value any) (float64, bool) {
-	switch v := value.(type) {
-	case int:
-		return float64(v), true
-	case int8:
-		return float64(v), true
-	case int16:
-		return float64(v), true
-	case int32:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case uint:
-		return float64(v), true
-	case uint8:
-		return float64(v), true
-	case uint16:
-		return float64(v), true
-	case uint32:
-		return float64(v), true
-	case uint64:
-		return float64(v), true
-	case float32:
-		return float64(v), true
-	case float64:
-		return v, true
+		return int(unsigned), true
 	default:
 		return 0, false
 	}
 }
 
-func integer(value any) (int, bool) {
-	if n, ok := number(value); ok && n == math.Trunc(n) {
-		return int(n), true
-	}
-	if text, ok := value.(string); ok {
-		n, err := strconv.Atoi(text)
-		return n, err == nil
-	}
-	return 0, false
+func isMissing(input any) bool {
+	_, ok := input.(value.MissingValue)
+	return ok
 }
 
-func equal(left, right any) bool {
-	if l, ok := number(left); ok {
-		if r, ok := number(right); ok {
-			return l == r
-		}
-	}
-	return reflect.DeepEqual(left, right)
-}
-
-func compare(op string, left, right any) (bool, error) {
-	if l, ok := number(left); ok {
-		if r, ok := number(right); ok {
-			switch op {
-			case ">":
-				return l > r, nil
-			case ">=":
-				return l >= r, nil
-			case "<":
-				return l < r, nil
-			default:
-				return l <= r, nil
-			}
-		}
-	}
-	l, r := stringify(left), stringify(right)
-	switch op {
-	case ">":
-		return l > r, nil
-	case ">=":
-		return l >= r, nil
-	case "<":
-		return l < r, nil
-	case "<=":
-		return l <= r, nil
-	default:
-		return false, fmt.Errorf("namat expression: unsupported comparison %q", op)
-	}
-}
-
-func stringify(value any) string {
-	if isNil(value) {
-		return ""
-	}
-	switch v := value.(type) {
-	case string:
-		return v
-	case fmt.Stringer:
-		return v.String()
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 32)
-	default:
-		return fmt.Sprint(v)
-	}
-}
-
-func isNil(value any) bool {
-	if value == nil {
+func isNil(input any) bool {
+	if input == nil {
 		return true
 	}
-	v := reflect.ValueOf(value)
-	switch v.Kind() {
+	reflected := reflect.ValueOf(input)
+	switch reflected.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return v.IsNil()
+		return reflected.IsNil()
 	default:
 		return false
+	}
+}
+
+func keysOf(input any) []string {
+	if isNil(input) || isMissing(input) {
+		return nil
+	}
+	reflected := reflect.ValueOf(input)
+	for reflected.Kind() == reflect.Pointer || reflected.Kind() == reflect.Interface {
+		if reflected.IsNil() {
+			return nil
+		}
+		reflected = reflected.Elem()
+	}
+	var result []string
+	switch reflected.Kind() {
+	case reflect.Map:
+		if reflected.Type().Key().Kind() == reflect.String {
+			iterator := reflected.MapRange()
+			for iterator.Next() {
+				result = append(result, iterator.Key().String())
+			}
+		}
+	case reflect.Struct:
+		typeOf := reflected.Type()
+		for index := 0; index < reflected.NumField(); index++ {
+			field := typeOf.Field(index)
+			if !reflected.Field(index).CanInterface() {
+				continue
+			}
+			name := strings.Split(field.Tag.Get("json"), ",")[0]
+			if name == "-" {
+				continue
+			}
+			if name == "" {
+				name = field.Name
+			}
+			result = append(result, name)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func mapKeys(input map[string]any) []string {
+	result := make([]string, 0, len(input))
+	for key := range input {
+		result = append(result, key)
+	}
+	return result
+}
+
+func functionNames(input map[string]Function) []string {
+	result := make([]string, 0, len(input))
+	for name := range input {
+		result = append(result, name)
+	}
+	return result
+}
+
+func unknownNameError(kind, name string, candidates []string) error {
+	message := fmt.Sprintf("namat expression: unknown %s %q", kind, name)
+	if suggestion := closestName(name, candidates); suggestion != "" {
+		message += fmt.Sprintf("; did you mean %q?", suggestion)
+	}
+	return errors.New(message)
+}
+
+func closestName(name string, candidates []string) string {
+	best, bestDistance := "", 3
+	for _, candidate := range candidates {
+		distance := editDistance(name, candidate)
+		if distance < bestDistance {
+			best, bestDistance = candidate, distance
+		}
+	}
+	return best
+}
+
+func editDistance(left, right string) int {
+	a, b := []rune(left), []rune(right)
+	previous := make([]int, len(b)+1)
+	for index := range previous {
+		previous[index] = index
+	}
+	for i, leftRune := range a {
+		current := make([]int, len(b)+1)
+		current[0] = i + 1
+		for j, rightRune := range b {
+			cost := 0
+			if leftRune != rightRune {
+				cost = 1
+			}
+			current[j+1] = min(current[j]+1, previous[j+1]+1, previous[j]+cost)
+		}
+		previous = current
+	}
+	return previous[len(b)]
+}
+
+func Format(input any) (string, error) {
+	if isMissing(input) {
+		return "", errors.New("namat expression: missing value cannot be rendered; use default")
+	}
+	if isNil(input) {
+		return "", nil
+	}
+	reflected := indirect(reflect.ValueOf(input))
+	if reflected.IsValid() && reflected.CanInterface() {
+		input = reflected.Interface()
+	}
+	switch typed := input.(type) {
+	case string:
+		return typed, nil
+	case value.DecimalValue:
+		return typed.String(), nil
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64), nil
+	case float32:
+		return strconv.FormatFloat(float64(typed), 'f', -1, 32), nil
+	default:
+		return fmt.Sprint(typed), nil
 	}
 }

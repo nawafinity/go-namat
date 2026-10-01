@@ -3,21 +3,47 @@ package expr
 import (
 	"fmt"
 	"strconv"
+	"strings"
+
+	"github.com/nawafinity/go-namat/internal/value"
 )
 
-// Program is a compiled Namat expression.
+// Signature describes a callable expression function.
+type Signature struct {
+	Params      []value.Kind
+	Variadic    bool
+	Returns     value.Kind
+	Description string
+	Pure        bool
+}
+
+// CompileOptions bounds parsing and optionally validates function calls.
+type CompileOptions struct {
+	MaxBytes  int
+	MaxTokens int
+	MaxDepth  int
+	Functions map[string]Signature
+}
+
+// Program is an immutable compiled Namat expression.
 type Program struct {
 	source string
 	root   node
 }
 
-// Compile parses an expression once so it can be evaluated repeatedly.
 func Compile(source string) (*Program, error) {
-	tokens, err := lex(source)
+	return CompileWithOptions(source, CompileOptions{})
+}
+
+func CompileWithOptions(source string, options CompileOptions) (*Program, error) {
+	if options.MaxBytes > 0 && len(source) > options.MaxBytes {
+		return nil, fmt.Errorf("namat expression: byte limit exceeded (%d)", options.MaxBytes)
+	}
+	tokens, err := lex(source, options.MaxTokens)
 	if err != nil {
 		return nil, err
 	}
-	p := parser{tokens: tokens}
+	p := parser{tokens: tokens, maxDepth: options.MaxDepth}
 	root, err := p.parseExpression(0)
 	if err != nil {
 		return nil, err
@@ -25,15 +51,37 @@ func Compile(source string) (*Program, error) {
 	if tok := p.peek(); tok.kind != tokenEOF {
 		return nil, fmt.Errorf("namat expression: unexpected token %s", tok)
 	}
+	if options.Functions != nil {
+		if err := validateCalls(root, options.Functions); err != nil {
+			return nil, err
+		}
+	}
 	return &Program{source: source, root: root}, nil
 }
 
 type parser struct {
-	tokens []token
-	pos    int
+	tokens   []token
+	pos      int
+	depth    int
+	maxDepth int
 }
 
+func (p *parser) enter() error {
+	p.depth++
+	if p.maxDepth > 0 && p.depth > p.maxDepth {
+		return fmt.Errorf("namat expression: AST depth limit exceeded (%d)", p.maxDepth)
+	}
+	return nil
+}
+
+func (p *parser) leave() { p.depth-- }
+
 func (p *parser) parseExpression(minPrecedence int) (node, error) {
+	if err := p.enter(); err != nil {
+		return nil, err
+	}
+	defer p.leave()
+
 	left, err := p.parseUnary()
 	if err != nil {
 		return nil, err
@@ -54,20 +102,23 @@ func (p *parser) parseExpression(minPrecedence int) (node, error) {
 		}
 		left = binaryNode{op: tok.text, left: left, right: right}
 	}
-	if minPrecedence == 0 && p.peek().kind == tokenQuestion {
-		p.next()
-		whenTrue, err := p.parseExpression(0)
-		if err != nil {
-			return nil, err
+	if minPrecedence == 0 {
+		for p.peek().kind == tokenPipe {
+			p.next()
+			name := p.next()
+			if name.kind != tokenIdentifier {
+				return nil, fmt.Errorf("namat expression: expected filter name at byte %d", name.pos)
+			}
+			args := []node{left}
+			if p.peek().kind == tokenLParen {
+				parsed, err := p.parseArguments()
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, parsed...)
+			}
+			left = callNode{name: name.text, args: args, pos: name.pos}
 		}
-		if colon := p.next(); colon.kind != tokenColon {
-			return nil, fmt.Errorf("namat expression: expected : at byte %d", colon.pos)
-		}
-		whenFalse, err := p.parseExpression(0)
-		if err != nil {
-			return nil, err
-		}
-		left = conditionalNode{condition: left, whenTrue: whenTrue, whenFalse: whenFalse}
 	}
 	return left, nil
 }
@@ -75,17 +126,17 @@ func (p *parser) parseExpression(minPrecedence int) (node, error) {
 func (p *parser) parseUnary() (node, error) {
 	if tok := p.peek(); tok.kind == tokenOperator && (tok.text == "!" || tok.text == "-" || tok.text == "+") {
 		p.next()
-		value, err := p.parseUnary()
+		operand, err := p.parseUnary()
 		if err != nil {
 			return nil, err
 		}
-		return unaryNode{op: tok.text, value: value}, nil
+		return unaryNode{op: tok.text, value: operand}, nil
 	}
 	return p.parsePostfix()
 }
 
 func (p *parser) parsePostfix() (node, error) {
-	value, err := p.parsePrimary()
+	result, err := p.parsePrimary()
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +148,7 @@ func (p *parser) parsePostfix() (node, error) {
 			if name.kind != tokenIdentifier {
 				return nil, fmt.Errorf("namat expression: expected property name at byte %d", name.pos)
 			}
-			value = memberNode{target: value, key: literalNode{value: name.text}, optional: optional}
+			result = memberNode{target: result, key: literalNode{value: name.text}, optional: optional}
 		case tokenLBracket:
 			p.next()
 			index, err := p.parseExpression(0)
@@ -107,31 +158,46 @@ func (p *parser) parsePostfix() (node, error) {
 			if tok := p.next(); tok.kind != tokenRBracket {
 				return nil, fmt.Errorf("namat expression: expected ] at byte %d", tok.pos)
 			}
-			value = memberNode{target: value, key: index}
+			result = memberNode{target: result, key: index}
 		case tokenLParen:
-			p.next()
-			var args []node
-			if p.peek().kind != tokenRParen {
-				for {
-					arg, err := p.parseExpression(0)
-					if err != nil {
-						return nil, err
-					}
-					args = append(args, arg)
-					if p.peek().kind != tokenComma {
-						break
-					}
-					p.next()
-				}
+			identifier, ok := result.(identifierNode)
+			if !ok {
+				return nil, fmt.Errorf("namat expression: methods and dynamic calls are not supported at byte %d", p.peek().pos)
 			}
-			if tok := p.next(); tok.kind != tokenRParen {
-				return nil, fmt.Errorf("namat expression: expected ) at byte %d", tok.pos)
+			args, err := p.parseArguments()
+			if err != nil {
+				return nil, err
 			}
-			value = callNode{callee: value, args: args}
+			result = callNode{name: identifier.name, args: args, pos: identifier.pos}
 		default:
-			return value, nil
+			return result, nil
 		}
 	}
+}
+
+func (p *parser) parseArguments() ([]node, error) {
+	open := p.next()
+	if open.kind != tokenLParen {
+		return nil, fmt.Errorf("namat expression: expected ( at byte %d", open.pos)
+	}
+	var args []node
+	if p.peek().kind != tokenRParen {
+		for {
+			argument, err := p.parseExpression(0)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, argument)
+			if p.peek().kind != tokenComma {
+				break
+			}
+			p.next()
+		}
+	}
+	if close := p.next(); close.kind != tokenRParen {
+		return nil, fmt.Errorf("namat expression: expected ) at byte %d", close.pos)
+	}
+	return args, nil
 }
 
 func (p *parser) parsePrimary() (node, error) {
@@ -143,36 +209,50 @@ func (p *parser) parsePrimary() (node, error) {
 			return literalNode{value: true}, nil
 		case "false":
 			return literalNode{value: false}, nil
-		case "null", "nil", "undefined":
+		case "null":
 			return literalNode{value: nil}, nil
+		case "nil", "undefined":
+			return nil, fmt.Errorf("namat expression: %q is not a v1 literal; use null at byte %d", tok.text, tok.pos)
 		default:
-			return identifierNode{name: tok.text}, nil
+			return identifierNode{name: tok.text, pos: tok.pos}, nil
 		}
 	case tokenNumber:
-		value, _ := strconv.ParseFloat(tok.text, 64)
-		return literalNode{value: value}, nil
+		if strings.Contains(tok.text, ".") {
+			decimal, err := value.ParseDecimal(tok.text)
+			if err != nil {
+				return nil, fmt.Errorf("namat expression: %w at byte %d", err, tok.pos)
+			}
+			return literalNode{value: decimal}, nil
+		}
+		integer, err := strconv.ParseInt(tok.text, 10, 64)
+		if err == nil {
+			return literalNode{value: integer}, nil
+		}
+		unsigned, unsignedErr := strconv.ParseUint(tok.text, 10, 64)
+		if unsignedErr != nil {
+			return nil, fmt.Errorf("namat expression: integer out of range at byte %d", tok.pos)
+		}
+		return literalNode{value: unsigned}, nil
 	case tokenString:
 		return literalNode{value: tok.text}, nil
-	case tokenTemplate:
-		return templateNode{text: tok.text}, nil
 	case tokenLParen:
-		value, err := p.parseExpression(0)
+		result, err := p.parseExpression(0)
 		if err != nil {
 			return nil, err
 		}
 		if close := p.next(); close.kind != tokenRParen {
 			return nil, fmt.Errorf("namat expression: expected ) at byte %d", close.pos)
 		}
-		return value, nil
+		return result, nil
 	case tokenLBracket:
 		var values []node
 		if p.peek().kind != tokenRBracket {
 			for {
-				value, err := p.parseExpression(0)
+				item, err := p.parseExpression(0)
 				if err != nil {
 					return nil, err
 				}
-				values = append(values, value)
+				values = append(values, item)
 				if p.peek().kind != tokenComma {
 					break
 				}
@@ -194,11 +274,11 @@ func (p *parser) parsePrimary() (node, error) {
 				if colon := p.next(); colon.kind != tokenColon {
 					return nil, fmt.Errorf("namat expression: expected : at byte %d", colon.pos)
 				}
-				value, err := p.parseExpression(0)
+				item, err := p.parseExpression(0)
 				if err != nil {
 					return nil, err
 				}
-				entries = append(entries, objectEntry{key: key.text, value: value})
+				entries = append(entries, objectEntry{key: key.text, value: item})
 				if p.peek().kind != tokenComma {
 					break
 				}
@@ -237,7 +317,7 @@ func binaryPrecedence(op string) (int, bool) {
 		return 2, true
 	case "&&":
 		return 3, true
-	case "==", "===", "!=", "!==":
+	case "==", "!=":
 		return 4, true
 	case ">", ">=", "<", "<=":
 		return 5, true
@@ -248,4 +328,51 @@ func binaryPrecedence(op string) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func validateCalls(root node, functions map[string]Signature) error {
+	var walk func(node) error
+	walk = func(current node) error {
+		switch typed := current.(type) {
+		case arrayNode:
+			for _, item := range typed.values {
+				if err := walk(item); err != nil {
+					return err
+				}
+			}
+		case objectNode:
+			for _, entry := range typed.entries {
+				if err := walk(entry.value); err != nil {
+					return err
+				}
+			}
+		case memberNode:
+			if err := walk(typed.target); err != nil {
+				return err
+			}
+			return walk(typed.key)
+		case unaryNode:
+			return walk(typed.value)
+		case binaryNode:
+			if err := walk(typed.left); err != nil {
+				return err
+			}
+			return walk(typed.right)
+		case callNode:
+			signature, ok := functions[typed.name]
+			if !ok {
+				return fmt.Errorf("namat expression: unknown function %q at byte %d", typed.name, typed.pos)
+			}
+			if (!signature.Variadic && len(typed.args) != len(signature.Params)) || (signature.Variadic && len(typed.args) < len(signature.Params)) {
+				return fmt.Errorf("namat expression: function %q expects %d arguments, got %d", typed.name, len(signature.Params), len(typed.args))
+			}
+			for _, argument := range typed.args {
+				if err := walk(argument); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	return walk(root)
 }

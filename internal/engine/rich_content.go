@@ -11,6 +11,9 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/nawafinity/go-namat/internal/expr"
+	valuetype "github.com/nawafinity/go-namat/internal/value"
 )
 
 const emuPerCentimeter = 360000.0
@@ -218,7 +221,9 @@ func (s *renderState) imageNode(value any) (*xmlNode, error) {
 
 func (s *renderState) addImageResource(data []byte, extension string) (string, error) {
 	partName := s.pkg.uniquePartName("word/media", "namat-image-", extension)
-	s.pkg.addGeneratedPart(partName, data, zip.Deflate)
+	if err := s.addGeneratedPart(partName, data, zip.Deflate); err != nil {
+		return "", err
+	}
 	if err := s.pkg.ensureDefaultContentType(extension, imageContentTypes[extension]); err != nil {
 		return "", err
 	}
@@ -256,12 +261,17 @@ func (s *renderState) linkNode(value any) (*xmlNode, error) {
 }
 
 func (s *renderState) htmlNode(value any) (*xmlNode, error) {
-	html := formatValue(value)
-	if html == "" && s.template.options.RejectNullish {
-		return nil, fmt.Errorf("HTML result is empty")
+	if kind := expr.KindOf(value); kind == valuetype.Missing || kind == valuetype.Null {
+		return nil, fmt.Errorf("HTML value is %s", kind)
+	}
+	html, err := expr.Format(value)
+	if err != nil {
+		return nil, fmt.Errorf("HTML value: %w", err)
 	}
 	partName := s.pkg.uniquePartName("word", "namat-html-", "html")
-	s.pkg.addGeneratedPart(partName, []byte(html), zip.Deflate)
+	if err := s.addGeneratedPart(partName, []byte(html), zip.Deflate); err != nil {
+		return nil, err
+	}
 	if err := s.pkg.ensureDefaultContentType("html", "text/html"); err != nil {
 		return nil, err
 	}
@@ -270,6 +280,22 @@ func (s *renderState) htmlNode(value any) (*xmlNode, error) {
 		return nil, err
 	}
 	return singleXMLNode(`<w:altChunk xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="`+escapeXML(relationshipID)+`"/>`, "HTML altChunk")
+}
+
+func (s *renderState) addGeneratedPart(name string, data []byte, method uint16) error {
+	options := s.template.options
+	if int64(len(data)) > options.MaxPartBytes {
+		return fmt.Errorf("%w: generated package part %s exceeds size limit", ErrSecurityLimit, name)
+	}
+	if len(s.pkg.Parts) >= options.MaxPackageParts {
+		return fmt.Errorf("%w: generated package part exceeds MaxPackageParts (%d)", ErrSecurityLimit, options.MaxPackageParts)
+	}
+	current := s.pkg.uncompressedBytes()
+	if int64(len(data)) > options.MaxUncompressedBytes-current {
+		return fmt.Errorf("%w: generated package content exceeds MaxUncompressedBytes (%d)", ErrSecurityLimit, options.MaxUncompressedBytes)
+	}
+	s.pkg.addGeneratedPart(name, data, method)
+	return nil
 }
 
 func singleXMLNode(source, label string) (*xmlNode, error) {
@@ -361,63 +387,30 @@ func expandTextMarkup(root *xmlNode, options Options) error {
 				continue
 			}
 			text := textOfParagraph(child)
-			hasLiteralXML := strings.Contains(text, options.LiteralXMLDelimiter)
-			if hasLiteralXML && !options.AllowRawXML {
-				return fmt.Errorf("literal XML is disabled; set AllowRawXML to enable it")
-			}
-			if !options.DisableLineBreaks {
-				text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
-				text = strings.ReplaceAll(text, "\n", options.LiteralXMLDelimiter+`<w:br/>`+options.LiteralXMLDelimiter)
-			}
-			if !strings.Contains(text, options.LiteralXMLDelimiter) {
+			if options.DisableLineBreaks || !strings.ContainsAny(text, "\r\n") {
 				setTextOfNode(child, text)
 				children = append(children, child)
 				continue
 			}
-			expanded, err := literalXMLNodes(child, text, options.LiteralXMLDelimiter)
-			if err != nil {
-				return err
+			text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+			parts := strings.Split(text, "\n")
+			for index, part := range parts {
+				if index > 0 {
+					children = append(children, elementWithPrefix("w", "br"))
+				}
+				if part == "" {
+					continue
+				}
+				copy := child.clone()
+				if err := setTextOfNode(copy, part); err != nil {
+					return err
+				}
+				children = append(children, copy)
 			}
-			children = append(children, expanded...)
 		}
 		run.Children = children
 	}
 	return nil
-}
-
-func literalXMLNodes(template *xmlNode, text, delimiter string) ([]*xmlNode, error) {
-	var result []*xmlNode
-	for {
-		start := strings.Index(text, delimiter)
-		if start < 0 {
-			if text != "" {
-				copy := template.clone()
-				if err := setTextOfNode(copy, text); err != nil {
-					return nil, err
-				}
-				result = append(result, copy)
-			}
-			return result, nil
-		}
-		end := strings.Index(text[start+len(delimiter):], delimiter)
-		if end < 0 {
-			return nil, fmt.Errorf("unterminated literal XML delimiter")
-		}
-		if start > 0 {
-			copy := template.clone()
-			if err := setTextOfNode(copy, text[:start]); err != nil {
-				return nil, err
-			}
-			result = append(result, copy)
-		}
-		end += start + len(delimiter)
-		xmlNodes, err := parseXMLFragment(text[start+len(delimiter) : end])
-		if err != nil {
-			return nil, fmt.Errorf("parse literal XML: %w", err)
-		}
-		result = append(result, xmlNodes...)
-		text = text[end+len(delimiter):]
-	}
 }
 
 func valueField(value any, name string) (any, bool) {
@@ -434,10 +427,10 @@ func valueField(value any, name string) (any, bool) {
 	switch v.Kind() {
 	case reflect.Map:
 		if v.Type().Key().Kind() == reflect.String {
-			for _, key := range v.MapKeys() {
-				if strings.EqualFold(key.String(), name) {
-					return v.MapIndex(key).Interface(), true
-				}
+			key := reflect.ValueOf(name).Convert(v.Type().Key())
+			resolved := v.MapIndex(key)
+			if resolved.IsValid() {
+				return resolved.Interface(), true
 			}
 		}
 	case reflect.Struct:
@@ -445,7 +438,11 @@ func valueField(value any, name string) (any, bool) {
 		for index := 0; index < v.NumField(); index++ {
 			field := t.Field(index)
 			jsonName := strings.Split(field.Tag.Get("json"), ",")[0]
-			if strings.EqualFold(field.Name, name) || jsonName == name {
+			lookupName := field.Name
+			if jsonName != "" && jsonName != "-" {
+				lookupName = jsonName
+			}
+			if lookupName == name {
 				if v.Field(index).CanInterface() {
 					return v.Field(index).Interface(), true
 				}

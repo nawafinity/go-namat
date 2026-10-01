@@ -4,6 +4,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -21,14 +22,15 @@ type Template struct {
 	pkg      *docxPackage
 	parts    map[string]*xmlNode
 	cache    sync.Map
-	aliases  map[string]Command
-	queries  []string
 	commands []Command
 }
 
 // Compile validates and compiles a DOCX template.
 func Compile(template []byte, options Options) (*Template, error) {
 	options = options.normalized()
+	if options.LanguageVersion != "v1" {
+		return nil, fmt.Errorf("namat: unsupported language version %q; only v1 is available", options.LanguageVersion)
+	}
 	if int64(len(template)) > options.MaxTemplateBytes {
 		return nil, fmt.Errorf("namat: %w: template exceeds MaxTemplateBytes (%d)", ErrSecurityLimit, options.MaxTemplateBytes)
 	}
@@ -39,7 +41,7 @@ func Compile(template []byte, options Options) (*Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	compiled := &Template{options: options, pkg: pkg, parts: make(map[string]*xmlNode), aliases: make(map[string]Command)}
+	compiled := &Template{options: options, pkg: pkg, parts: make(map[string]*xmlNode)}
 	partCommands := make(map[string][]Command)
 	var validationErrors []error
 	for _, name := range pkg.Order {
@@ -54,22 +56,10 @@ func Compile(template []byte, options Options) (*Template, error) {
 		normalizeCommandFragments(root, options)
 		commands, err := commandsInXML(root, options)
 		if err != nil {
-			return nil, &Error{Part: name, Err: err}
+			return nil, commandSyntaxError(name, err)
 		}
-		for _, command := range commands {
-			if command.Type == CommandAlias {
-				if _, exists := compiled.aliases[command.Variable]; exists {
-					return nil, &Error{Part: name, Command: command.Raw, Err: fmt.Errorf("duplicate alias %q", command.Variable)}
-				}
-				resolved, err := parseCommand(command.Expression)
-				if err != nil {
-					return nil, &Error{Part: name, Command: command.Raw, Err: err}
-				}
-				compiled.aliases[command.Variable] = resolved
-			}
-			if command.Type == CommandQuery {
-				compiled.queries = append(compiled.queries, command.Expression)
-			}
+		if len(commands) == 0 {
+			continue
 		}
 		compiled.parts[name] = root
 		partCommands[name] = commands
@@ -83,7 +73,7 @@ func Compile(template []byte, options Options) (*Template, error) {
 		commands := partCommands[name]
 		for _, command := range commands {
 			if err := compiled.validateCommand(command); err != nil {
-				wrapped := &Error{Part: name, Command: command.Raw, Err: fmt.Errorf("%w: %v", ErrCommandSyntax, err)}
+				wrapped := &Error{Part: name, Paragraph: command.Location.Paragraph, CommandIndex: command.Location.Ordinal, Start: command.Location.Start, End: command.Location.End, Command: command.Raw, Err: fmt.Errorf("%w: %v", ErrCommandSyntax, err)}
 				if !options.CollectErrors {
 					return nil, wrapped
 				}
@@ -140,49 +130,43 @@ func CreateReportReader(ctx context.Context, template io.Reader, data any, optio
 func (t *Template) Render(parent context.Context, data any) ([]byte, error) {
 	ctx, cancel := renderContext(parent, t.options.Timeout)
 	defer cancel()
-	if len(t.queries) > 1 {
-		return nil, fmt.Errorf("namat: template contains more than one QUERY command")
-	}
-	if len(t.queries) == 1 {
-		if t.options.QueryResolver == nil {
-			return nil, fmt.Errorf("namat: template contains QUERY but no QueryResolver was configured")
-		}
-		resolved, err := t.options.QueryResolver(ctx, t.queries[0])
-		if err != nil {
-			return nil, fmt.Errorf("namat: resolve query: %w", err)
-		}
-		data = resolved
-	}
-
 	pkg := t.pkg.clone()
 	resourceCounter := maxDrawingIdentifier(t.parts)
-	state := &renderState{
-		ctx:       ctx,
-		template:  t,
-		rootData:  data,
-		variables: make(map[string]any),
-		functions: t.options.expressionFunctions(),
-		counter:   &renderCounter{resources: resourceCounter},
-		pkg:       pkg,
-	}
+	counter := &renderCounter{resources: resourceCounter}
 	for _, name := range pkg.Order {
 		source, ok := t.parts[name]
 		if !ok {
 			continue
 		}
 		root := source.clone()
-		state.partName = name
+		state := &renderState{
+			ctx:       ctx,
+			template:  t,
+			rootData:  data,
+			variables: make(map[string]any),
+			declared:  make(map[string]struct{}),
+			functions: t.options.expressionFunctions(),
+			counter:   counter,
+			pkg:       pkg,
+			partName:  name,
+		}
 		if err := state.processNode(root); err != nil {
+			var commandErr *Error
+			if errors.As(err, &commandErr) && commandErr.Part == "" {
+				copy := *commandErr
+				copy.Part = name
+				return nil, &copy
+			}
 			return nil, &Error{Part: name, Err: err}
 		}
 		pkg.Parts[name].Data = root.bytes()
 	}
-	result, err := pkg.bytesWithCompression(t.options.CompressionLevel)
-	if err != nil {
+	if err := pkg.validateLimits(t.options.MaxPartBytes, t.options.MaxUncompressedBytes, t.options.MaxPackageParts); err != nil {
 		return nil, err
 	}
-	if int64(len(result)) > t.options.MaxOutputBytes {
-		return nil, fmt.Errorf("namat: %w: rendered document exceeds MaxOutputBytes (%d)", ErrSecurityLimit, t.options.MaxOutputBytes)
+	result, err := pkg.bytesWithCompressionLimit(ctx, t.options.CompressionLevel, t.options.MaxOutputBytes)
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -256,32 +240,33 @@ func ListCommands(template []byte, options Options) ([]Command, error) {
 		normalizeCommandFragments(root, options)
 		commands, err := commandsInXML(root, options)
 		if err != nil {
-			return nil, &Error{Part: name, Err: err}
+			return nil, commandSyntaxError(name, err)
+		}
+		if len(commands) == 0 {
+			continue
 		}
 		result = append(result, commands...)
 	}
 	return result, nil
 }
 
-func (t *Template) validateCommand(command Command) error {
-	if command.Type == CommandAliasRef {
-		resolved, err := t.resolveCommand(command)
-		if err != nil {
-			return err
-		}
-		return t.validateCommand(resolved)
+func commandSyntaxError(part string, err error) error {
+	result := &Error{Part: part, Err: fmt.Errorf("%w: %v", ErrCommandSyntax, err)}
+	var located *commandSyntaxLocationError
+	if errors.As(err, &located) {
+		result.Paragraph = located.Location.Paragraph
+		result.CommandIndex = located.Location.Ordinal
+		result.Start = located.Location.Start
+		result.End = located.Location.End
 	}
+	return result
+}
+
+func (t *Template) validateCommand(command Command) error {
 	switch command.Type {
-	case CommandElse, CommandEndIf, CommandEndFor, CommandQuery, CommandAlias:
+	case CommandElse, CommandEndIf, CommandEndEach:
 		return nil
-	case CommandExec, CommandSet:
-		_, expression, err := parseAssignment(command.Expression)
-		if err != nil {
-			return err
-		}
-		_, err = t.program(expression)
-		return err
-	case CommandImage, CommandLink, CommandHTML, CommandRawXML:
+	case CommandLet, CommandImage, CommandLink, CommandHTML, CommandRawXML:
 		// Rich-content expressions are compiled here and materialized during rendering.
 		_, err := t.program(command.Expression)
 		return err
@@ -291,18 +276,6 @@ func (t *Template) validateCommand(command Command) error {
 	}
 }
 
-func (t *Template) resolveCommand(command Command) (Command, error) {
-	if command.Type != CommandAliasRef {
-		return command, nil
-	}
-	resolved, ok := t.aliases[command.Variable]
-	if !ok {
-		return Command{}, fmt.Errorf("unknown alias %q", command.Variable)
-	}
-	resolved.Raw = command.Raw
-	return resolved, nil
-}
-
 func (t *Template) program(source string) (*expr.Program, error) {
 	if t.options.FixSmartQuotes {
 		source = normalizeSmartQuotes(source)
@@ -310,7 +283,12 @@ func (t *Template) program(source string) (*expr.Program, error) {
 	if cached, ok := t.cache.Load(source); ok {
 		return cached.(*expr.Program), nil
 	}
-	program, err := expr.Compile(source)
+	program, err := expr.CompileWithOptions(source, expr.CompileOptions{
+		MaxBytes:  t.options.MaxExpressionBytes,
+		MaxTokens: t.options.MaxExpressionTokens,
+		MaxDepth:  t.options.MaxExpressionDepth,
+		Functions: t.options.expressionSignatures(),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -335,6 +313,9 @@ func collectionLength(value any) (int, error) {
 	}
 	switch v.Kind() {
 	case reflect.Array, reflect.Slice, reflect.Map, reflect.String:
+		if v.Kind() == reflect.String {
+			return len([]rune(v.String())), nil
+		}
 		return v.Len(), nil
 	default:
 		return 0, fmt.Errorf("len does not support %T", value)
@@ -342,30 +323,9 @@ func collectionLength(value any) (int, error) {
 }
 
 func formatValue(value any) string {
-	if value == nil {
+	formatted, err := expr.Format(value)
+	if err != nil {
 		return ""
 	}
-	switch v := value.(type) {
-	case string:
-		return v
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 32)
-	default:
-		return fmt.Sprint(v)
-	}
-}
-
-func parseAssignment(source string) (string, string, error) {
-	index := strings.Index(source, "=")
-	if index <= 0 || index == len(source)-1 {
-		return "", "", fmt.Errorf("assignment syntax is name = expression")
-	}
-	name := strings.TrimSpace(source[:index])
-	value := strings.TrimSpace(source[index+1:])
-	if !validName(strings.TrimPrefix(name, "$")) {
-		return "", "", fmt.Errorf("invalid assignment target %q", name)
-	}
-	return name, value, nil
+	return formatted
 }

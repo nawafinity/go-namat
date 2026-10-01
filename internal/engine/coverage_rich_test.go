@@ -10,20 +10,20 @@ import (
 )
 
 type imageValue struct {
-	Data      any
-	Extension string
-	Width     float64
-	Height    float64
-	Alt       string
-	Rotation  float64
-	Caption   string
-	Thumbnail any
+	Data      any     `json:"data"`
+	Extension string  `json:"extension"`
+	Width     float64 `json:"width"`
+	Height    float64 `json:"height"`
+	Alt       string  `json:"alt"`
+	Rotation  float64 `json:"rotation"`
+	Caption   string  `json:"caption"`
+	Thumbnail any     `json:"thumbnail"`
 }
 
 type linkValue struct {
-	URL     string
-	Label   string
-	Tooltip string
+	URL     string `json:"url"`
+	Label   string `json:"label"`
+	Tooltip string `json:"tooltip"`
 }
 
 func richTestState() *renderState {
@@ -161,11 +161,10 @@ func TestRichNodeFailureEdges(t *testing.T) {
 	}
 
 	state = richTestState()
-	state.template.options.RejectNullish = true
-	if _, err := state.htmlNode(""); err == nil {
-		t.Fatal("empty HTML succeeded")
+	if _, err := state.htmlNode(nil); err == nil {
+		t.Fatal("null HTML succeeded")
 	}
-	state.template.options.RejectNullish = false
+	state = richTestState()
 	state.pkg.Parts["[Content_Types].xml"].Data = []byte("<broken>")
 	if _, err := state.htmlNode("<p>content</p>"); err == nil {
 		t.Fatal("HTML with malformed content types succeeded")
@@ -228,46 +227,24 @@ func TestSingleXMLNodeValidation(t *testing.T) {
 	}
 }
 
-func TestTextMarkupAndLiteralXMLEdges(t *testing.T) {
+func TestTextMarkupEdges(t *testing.T) {
 	root := mustParseElement(t, "<w:p><w:r><w:t>line1\nline2</w:t><w:tab/></w:r></w:p>")
-	if err := expandTextMarkup(root, Options{LiteralXMLDelimiter: "||"}); err != nil {
+	if err := expandTextMarkup(root, Options{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(root.descendants("br")) != 1 {
 		t.Fatalf("line break count = %d", len(root.descendants("br")))
 	}
 
-	disabled := mustParseElement(t, "<w:p><w:r><w:t>||&lt;w:br/&gt;||</w:t></w:r></w:p>")
-	if err := expandTextMarkup(disabled, Options{LiteralXMLDelimiter: "||"}); err == nil {
-		t.Fatal("disabled literal XML succeeded")
-	}
-	expansionError := mustParseElement(t, "<w:p><w:r><w:t>||&lt;broken&gt;||</w:t></w:r></w:p>")
-	if err := expandTextMarkup(expansionError, Options{LiteralXMLDelimiter: "||", AllowRawXML: true}); err == nil {
-		t.Fatal("malformed expanded literal XML succeeded")
-	}
-	malformed := mustParseElement(t, "<w:t>text</w:t>")
-	if _, err := literalXMLNodes(malformed, "before||<broken>||", "||"); err == nil {
-		t.Fatal("malformed literal XML succeeded")
-	}
-	if _, err := literalXMLNodes(malformed, "before||<w:br/>", "||"); err == nil {
-		t.Fatal("unterminated literal delimiter succeeded")
-	}
-	nodes, err := literalXMLNodes(malformed, "before||<w:br/>||after", "||")
-	if err != nil || len(nodes) != 3 {
-		t.Fatalf("literal nodes = %d, %v", len(nodes), err)
-	}
-	withoutText := elementNode("t")
-	if _, err := literalXMLNodes(withoutText, "plain", "||"); err == nil {
-		t.Fatal("literal text without a text node succeeded")
-	}
-	if _, err := literalXMLNodes(withoutText, "prefix||<w:br/>||", "||"); err == nil {
-		t.Fatal("literal prefix without a text node succeeded")
+	escaped := mustParseElement(t, "<w:p><w:r><w:t>||&lt;w:br/&gt;||</w:t></w:r></w:p>")
+	if err := expandTextMarkup(escaped, Options{}); err != nil || textOfParagraph(escaped) != "||<w:br/>||" || len(escaped.descendants("br")) != 0 {
+		t.Fatalf("literal-looking text was interpreted: %q, %v", textOfParagraph(escaped), err)
 	}
 }
 
 func TestRichReflectionHelpers(t *testing.T) {
 	type sample struct {
-		Visible string
+		Visible string `json:"visible"`
 		hidden  string
 	}
 	type stringKey string
@@ -284,7 +261,8 @@ func TestRichReflectionHelpers(t *testing.T) {
 		{"nil", nil, "field", nil, false},
 		{"nil pointer", nilPointer, "field", nil, false},
 		{"pointer to nil interface", pointerToNilInterface, "field", nil, false},
-		{"map", map[string]any{"FiElD": 1}, "field", 1, true},
+		{"map exact", map[string]any{"field": 1}, "field", 1, true},
+		{"map case mismatch", map[string]any{"FiElD": 1}, "field", nil, false},
 		{"non-string map", map[int]string{1: "x"}, "field", nil, false},
 		{"named string map", map[stringKey]int{"field": 2}, "field", 2, true},
 		{"struct", sample{Visible: "yes"}, "visible", "yes", true},

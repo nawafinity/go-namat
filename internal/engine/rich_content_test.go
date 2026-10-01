@@ -3,22 +3,38 @@ package engine
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 )
 
+func TestGeneratedPartsHonorPackageLimits(t *testing.T) {
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@image image]]</w:t></w:r></w:p>`))})
+	compiled, err := Compile(template, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled.options.MaxPackageParts = len(compiled.pkg.Parts)
+	_, err = compiled.Render(context.Background(), map[string]any{
+		"image": Image{Data: []byte("image"), Extension: "png", Width: 1, Height: 1},
+	})
+	if !errors.Is(err, ErrSecurityLimit) || !strings.Contains(err.Error(), "MaxPackageParts") {
+		t.Fatalf("generated part limit error = %v", err)
+	}
+}
+
 func TestRenderInlineImageAddsMediaRelationshipAndContentType(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t xml:space="preserve">Before </w:t></w:r><w:r><w:t>[[IMAGE logo()]]</w:t></w:r><w:r><w:t xml:space="preserve"> after</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t xml:space="preserve">Before </w:t></w:r><w:r><w:t>[[@image logo()]]</w:t></w:r><w:r><w:t xml:space="preserve"> after</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 	if err != nil {
 		t.Fatal(err)
 	}
 	report, err := CreateReport(context.Background(), template, nil, Options{
-		Functions: map[string]Function{
-			"logo": func(args ...any) (any, error) {
+		Functions: map[string]FunctionSpec{
+			"logo": testFunction(func(context.Context, ...any) (any, error) {
 				return Image{Data: png, Extension: ".png", Width: 1.5, Height: 1.5, Alt: "Logo"}, nil
-			},
+			}),
 		},
 	})
 	if err != nil {
@@ -50,11 +66,11 @@ func TestRenderInlineImageAddsMediaRelationshipAndContentType(t *testing.T) {
 
 func TestRenderSVGWithFallbackThumbnail(t *testing.T) {
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
-	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[IMAGE graphic()]]</w:t></w:r></w:p>`))})
-	report, err := CreateReport(context.Background(), template, nil, Options{Functions: map[string]Function{
-		"graphic": func(args ...any) (any, error) {
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@image graphic()]]</w:t></w:r></w:p>`))})
+	report, err := CreateReport(context.Background(), template, nil, Options{Functions: map[string]FunctionSpec{
+		"graphic": testFunction(func(context.Context, ...any) (any, error) {
 			return Image{Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>`), Extension: "svg", Width: 2, Height: 2, Thumbnail: &Image{Data: png, Extension: "png"}}, nil
-		},
+		}),
 	}})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
@@ -77,7 +93,7 @@ func TestRenderSVGWithFallbackThumbnail(t *testing.T) {
 func TestRenderImageFromSyntheticObject(t *testing.T) {
 	png := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 	template := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[IMAGE image]]</w:t></w:r></w:p>`)),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@image image]]</w:t></w:r></w:p>`)),
 	})
 	report, err := CreateReport(context.Background(), template, map[string]any{
 		"image": map[string]any{
@@ -100,10 +116,12 @@ func TestImageInHeaderUsesHeaderRelationshipPart(t *testing.T) {
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 	template := testDOCX(t, map[string][]byte{
 		"word/document.xml": []byte(wordDocument(`<w:p/>`)),
-		"word/header1.xml":  []byte(`<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>[[IMAGE logo()]]</w:t></w:r></w:p></w:hdr>`),
+		"word/header1.xml":  []byte(`<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>[[@image logo()]]</w:t></w:r></w:p></w:hdr>`),
 	})
-	report, err := CreateReport(context.Background(), template, nil, Options{Functions: map[string]Function{
-		"logo": func(args ...any) (any, error) { return Image{Data: png, Extension: "png", Width: 1, Height: 1}, nil },
+	report, err := CreateReport(context.Background(), template, nil, Options{Functions: map[string]FunctionSpec{
+		"logo": testFunction(func(context.Context, ...any) (any, error) {
+			return Image{Data: png, Extension: "png", Width: 1, Height: 1}, nil
+		}),
 	}})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
@@ -122,10 +140,12 @@ func TestImageInHeaderUsesHeaderRelationshipPart(t *testing.T) {
 
 func TestImageDrawingIdentifiersDoNotCollide(t *testing.T) {
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
-	document := wordDocument(`<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:docPr id="41" name="Existing"/></wp:inline></w:drawing></w:r></w:p><w:p><w:r><w:t>[[IMAGE logo()]]</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:docPr id="41" name="Existing"/></wp:inline></w:drawing></w:r></w:p><w:p><w:r><w:t>[[@image logo()]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
-	report, err := CreateReport(context.Background(), template, nil, Options{Functions: map[string]Function{
-		"logo": func(args ...any) (any, error) { return Image{Data: png, Extension: "png", Width: 1, Height: 1}, nil },
+	report, err := CreateReport(context.Background(), template, nil, Options{Functions: map[string]FunctionSpec{
+		"logo": testFunction(func(context.Context, ...any) (any, error) {
+			return Image{Data: png, Extension: "png", Width: 1, Height: 1}, nil
+		}),
 	}})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
@@ -137,7 +157,7 @@ func TestImageDrawingIdentifiersDoNotCollide(t *testing.T) {
 }
 
 func TestRenderInlineLinkFromObjectExpression(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[LINK ({ url: 'https://example.com/document', label: 'Example link' })]]</w:t></w:r><w:r><w:t xml:space="preserve"> available</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[@link ({ url: 'https://example.com/document', label: 'Example link' })]]</w:t></w:r><w:r><w:t xml:space="preserve"> available</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	report, err := CreateReport(context.Background(), template, nil, Options{})
 	if err != nil {
@@ -161,7 +181,7 @@ func TestRenderInlineLinkFromObjectExpression(t *testing.T) {
 }
 
 func TestRejectsDisallowedLinkScheme(t *testing.T) {
-	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[LINK ({ url: 'file:///secret', label: 'x' })]]</w:t></w:r></w:p>`))})
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@link ({ url: 'file:///secret', label: 'x' })]]</w:t></w:r></w:p>`))})
 	_, err := CreateReport(context.Background(), template, nil, Options{})
 	if err == nil || !strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("error = %v, want disallowed scheme", err)
@@ -169,7 +189,7 @@ func TestRejectsDisallowedLinkScheme(t *testing.T) {
 }
 
 func TestRenderHTMLAltChunk(t *testing.T) {
-	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[HTML html]]</w:t></w:r></w:p>`))})
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@html html]]</w:t></w:r></w:p>`))})
 	report, err := CreateReport(context.Background(), template, map[string]any{"html": `<html><body><p>Hello</p></body></html>`}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
@@ -189,21 +209,21 @@ func TestRenderHTMLAltChunk(t *testing.T) {
 	}
 }
 
-func TestLiteralXMLAndLineBreaks(t *testing.T) {
+func TestLineBreaksDoNotInterpretLiteralXML(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[value]]</w:t></w:r></w:p>`))})
 	report, err := CreateReport(context.Background(), template, map[string]any{"value": "first\nsecond||<w:tab/>||third"}, Options{AllowRawXML: true})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
 	documentXML := string(readPart(t, report, "word/document.xml"))
-	if !strings.Contains(documentXML, "<w:br") || !strings.Contains(documentXML, "<w:tab") {
-		t.Fatalf("line break or literal XML missing: %s", documentXML)
+	if !strings.Contains(documentXML, "<w:br") || strings.Contains(documentXML, "<w:tab") || !strings.Contains(documentXML, "&lt;w:tab/&gt;") {
+		t.Fatalf("line break conversion or XML escaping is wrong: %s", documentXML)
 	}
 }
 
 func TestRawXMLRequiresOptIn(t *testing.T) {
-	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[RAW-XML xml()]]</w:t></w:r></w:p>`))})
-	options := Options{Functions: map[string]Function{"xml": func(args ...any) (any, error) { return `<w:p><w:r><w:t>raw</w:t></w:r></w:p>`, nil }}}
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@raw-xml xml()]]</w:t></w:r></w:p>`))})
+	options := Options{Functions: map[string]FunctionSpec{"xml": testFunction(func(context.Context, ...any) (any, error) { return `<w:p><w:r><w:t>raw</w:t></w:r></w:p>`, nil })}}
 	if _, err := CreateReport(context.Background(), template, nil, options); err == nil || !strings.Contains(err.Error(), "disabled") {
 		t.Fatalf("error = %v, want raw XML opt-in error", err)
 	}
@@ -217,27 +237,15 @@ func TestRawXMLRequiresOptIn(t *testing.T) {
 	}
 }
 
-func TestAliasAndQueryResolver(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[QUERY record by key]]</w:t></w:r></w:p><w:p><w:r><w:t>[[ALIAS recordName INS record.name]]</w:t></w:r></w:p><w:p><w:r><w:t>[[*recordName]]</w:t></w:r></w:p>`)
+func TestLexicalLet(t *testing.T) {
+	document := wordDocument(`<w:p><w:r><w:t>[[#let recordName = record.name]]</w:t></w:r></w:p><w:p><w:r><w:t>[[recordName]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
-	called := false
-	report, err := CreateReport(context.Background(), template, map[string]any{"record": map[string]any{"name": "wrong"}}, Options{
-		QueryResolver: func(ctx context.Context, query string) (any, error) {
-			called = true
-			if query != "record by key" {
-				t.Fatalf("query = %q", query)
-			}
-			return map[string]any{"record": map[string]any{"name": "resolved"}}, nil
-		},
-	})
+	report, err := CreateReport(context.Background(), template, map[string]any{"record": map[string]any{"name": "resolved"}}, Options{})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
-	if !called {
-		t.Fatal("query resolver was not called")
-	}
 	text := documentText(t, report)
-	if !strings.Contains(text, "resolved") || strings.Contains(text, "ALIAS") || strings.Contains(text, "QUERY") {
+	if !strings.Contains(text, "resolved") || strings.Contains(text, "#let") {
 		t.Fatalf("unexpected rendered text: %q", text)
 	}
 }

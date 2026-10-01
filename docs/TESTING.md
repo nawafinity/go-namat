@@ -15,8 +15,9 @@ files beside the package they exercise while leaving the module root small:
   content, security, and integration behavior;
 - `internal/expr/*_test.go` covers the native expression engine;
 - `cmd/namat/*_test.go` covers CLI-only behavior;
-- `internal/engine/testdata/fuzz` contains minimized rendering-engine
-  regression inputs produced by Go fuzzing.
+- `internal/engine/testdata/fuzz` contains any minimized rendering-engine
+  regression inputs committed from Go fuzzing. Other fuzz targets may keep
+  their initial seeds directly in `*_test.go`.
 
 Moving every test into a top-level `tests` directory would create a different
 Go package. That package could exercise the exported API, but it could not
@@ -39,6 +40,29 @@ not part of the published library API or consumer binaries.
   repository under its own confidentiality controls.
 - A CI guard rejects known product identifiers in Go tests and fuzz fixtures.
 
+## Compatibility evidence
+
+The ordinary Go suite validates package structure and rendering behavior; it
+does not launch Microsoft Word, LibreOffice, or Google Docs and does not prove
+pixel-identical output in those clients. `COMPATIBILITY.md` must distinguish
+structural support from versioned client verification.
+
+The pre-v1 visual fixture set remains unfinished. When added, each fixture must:
+
+- use synthetic content and contain no consumer-application data;
+- record source provenance and redistribution terms;
+- record the client, client version, operating system, and test date;
+- state whether comparison is automated or manually reviewed;
+- document expected client-specific differences rather than hiding them.
+
+The committed `internal/engine/testdata/compatibility/complex-tables.docx`
+fixture currently provides structural package evidence for complex tables and
+a LibreOffice-to-PDF smoke test. CI installs LibreOffice Writer and requires
+that conversion to produce a non-empty PDF. The test skips only on developer
+machines where neither `soffice` nor `libreoffice` is installed. It does not
+provide reviewed golden output and does not run Microsoft Word or Google Docs;
+therefore it does not complete the visual-compatibility roadmap gate.
+
 ## Quality commands
 
 ```bash
@@ -50,13 +74,21 @@ go test -race ./...
 go test -run '^$' -bench . -benchmem ./...
 ```
 
-CI requires 100% statement coverage independently for the public facade,
-rendering engine, native expression engine, CLI, and complete example. Generate
-a combined local profile with:
+CI enforces independent statement-coverage floors: 85% for the public facade,
+90% for the rendering engine, 70% for the expression engine, 95% for exact
+value types, 90% for the CLI, and 100% for the complete example. Generate a
+combined local profile with:
 
 ```bash
 go test -coverprofile=coverage-all.out ./...
 go tool cover -func=coverage-all.out
 ```
 
-Fuzz targets should also be run for longer periods before a release.
+CI fuzzes all five targets for 10 seconds each. The tag-triggered release
+workflow fuzzes every target for 60 seconds; maintainers may run longer local
+campaigns when parser, package, or expression code changes materially.
+
+Host callbacks require separate tests when an application uses them. In
+particular, test concurrent renders, callback failure, and downstream timeouts.
+The render timeout is cooperative and cannot interrupt a callback that does not
+return.

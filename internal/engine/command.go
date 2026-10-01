@@ -7,52 +7,38 @@ import (
 	"unicode/utf8"
 )
 
-// CommandType identifies a template command.
+// CommandType identifies a v1 template command.
 type CommandType string
 
 const (
-	// CommandInsert inserts an expression result as text.
-	CommandInsert CommandType = "INS"
-	// CommandExec evaluates an assignment without visible output.
-	CommandExec CommandType = "EXEC"
-	// CommandSet is an explicit assignment command.
-	CommandSet CommandType = "SET"
-	// CommandIf starts a conditional block.
-	CommandIf CommandType = "IF"
-	// CommandElse separates conditional branches.
-	CommandElse CommandType = "ELSE"
-	// CommandEndIf ends a conditional block.
-	CommandEndIf CommandType = "END-IF"
-	// CommandFor starts a collection loop.
-	CommandFor CommandType = "FOR"
-	// CommandEndFor ends a collection loop.
-	CommandEndFor CommandType = "END-FOR"
-	// CommandImage inserts an inline drawing.
-	CommandImage CommandType = "IMAGE"
-	// CommandLink inserts an external hyperlink.
-	CommandLink CommandType = "LINK"
-	// CommandHTML inserts an HTML altChunk in the main document.
-	CommandHTML CommandType = "HTML"
-	// CommandRawXML inserts trusted OOXML when explicitly enabled.
-	CommandRawXML CommandType = "RAW-XML"
-	// CommandQuery asks the host application to resolve root data.
-	CommandQuery CommandType = "QUERY"
-	// CommandAlias defines a reusable command.
-	CommandAlias CommandType = "ALIAS"
-	// CommandAliasRef invokes a previously defined alias.
-	CommandAliasRef CommandType = "ALIAS-REF"
+	CommandInsert  CommandType = "insert"
+	CommandLet     CommandType = "let"
+	CommandIf      CommandType = "if"
+	CommandElse    CommandType = "else"
+	CommandEndIf   CommandType = "/if"
+	CommandEach    CommandType = "each"
+	CommandEndEach CommandType = "/each"
+	CommandImage   CommandType = "@image"
+	CommandLink    CommandType = "@link"
+	CommandHTML    CommandType = "@html"
+	CommandRawXML  CommandType = "@raw-xml"
 )
 
 // Command is a parsed command found in a template.
 type Command struct {
-	// Raw is the command text without delimiters.
-	Raw string
-	// Type identifies the parsed command kind.
-	Type CommandType
-	// Expression contains the command expression or query text.
+	Raw        string
+	Type       CommandType
 	Expression string
-	// Variable contains a loop variable or alias name when applicable.
-	Variable string
+	Variable   string
+	Location   CommandLocation
+}
+
+// CommandLocation identifies an author-facing position inside one OOXML part.
+type CommandLocation struct {
+	Paragraph int
+	Ordinal   int
+	Start     int
+	End       int
 }
 
 func parseCommand(raw string) (Command, error) {
@@ -63,69 +49,82 @@ func parseCommand(raw string) (Command, error) {
 	if trimmed == "" {
 		return Command{}, fmt.Errorf("empty command")
 	}
-	upper := strings.ToUpper(trimmed)
-	for _, simple := range []CommandType{CommandElse, CommandEndIf} {
-		if upper == string(simple) {
-			return Command{Raw: raw, Type: simple}, nil
+
+	switch trimmed {
+	case "#else":
+		return Command{Raw: raw, Type: CommandElse}, nil
+	case "/if":
+		return Command{Raw: raw, Type: CommandEndIf}, nil
+	case "/each":
+		return Command{Raw: raw, Type: CommandEndEach}, nil
+	}
+
+	if strings.HasPrefix(trimmed, "#if") {
+		expression, err := commandArgument(trimmed, "#if")
+		if err != nil {
+			return Command{}, err
+		}
+		return Command{Raw: raw, Type: CommandIf, Expression: expression}, nil
+	}
+	if strings.HasPrefix(trimmed, "#each") {
+		rest, err := commandArgument(trimmed, "#each")
+		if err != nil {
+			return Command{}, err
+		}
+		expression, variable, ok := splitTopLevelKeyword(rest, "as")
+		if !ok || expression == "" || !validName(variable) {
+			return Command{}, fmt.Errorf("#each syntax is #each expression as name")
+		}
+		return Command{Raw: raw, Type: CommandEach, Expression: expression, Variable: variable}, nil
+	}
+	if strings.HasPrefix(trimmed, "#let") {
+		rest, err := commandArgument(trimmed, "#let")
+		if err != nil {
+			return Command{}, err
+		}
+		name, expression, ok := splitTopLevelAssignment(rest)
+		if !ok || !validName(name) || expression == "" {
+			return Command{}, fmt.Errorf("#let syntax is #let name = expression")
+		}
+		return Command{Raw: raw, Type: CommandLet, Expression: expression, Variable: name}, nil
+	}
+
+	for _, kind := range []CommandType{CommandImage, CommandLink, CommandHTML, CommandRawXML} {
+		prefix := string(kind)
+		if strings.HasPrefix(trimmed, prefix) {
+			expression, err := commandArgument(trimmed, prefix)
+			if err != nil {
+				return Command{}, err
+			}
+			return Command{Raw: raw, Type: kind, Expression: expression}, nil
 		}
 	}
-	if strings.HasPrefix(upper, string(CommandElse)+" ") || strings.HasPrefix(upper, string(CommandEndIf)+" ") {
-		return Command{}, fmt.Errorf("%s does not accept arguments", strings.Fields(upper)[0])
-	}
-	if upper == string(CommandEndFor) || strings.HasPrefix(upper, string(CommandEndFor)+" ") {
-		variable := strings.TrimPrefix(strings.TrimSpace(trimmed[len(CommandEndFor):]), "$")
-		if variable != "" && !validName(variable) {
-			return Command{}, fmt.Errorf("invalid END-FOR variable %q", variable)
-		}
-		return Command{Raw: raw, Type: CommandEndFor, Variable: variable}, nil
-	}
-	if strings.HasPrefix(upper, string(CommandFor)+" ") {
-		rest := strings.TrimSpace(trimmed[len(CommandFor):])
-		parts := splitKeyword(rest, " IN ")
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return Command{}, fmt.Errorf("FOR syntax is FOR name IN expression")
-		}
-		variable := strings.TrimPrefix(strings.TrimSpace(parts[0]), "$")
-		if !validName(variable) {
-			return Command{}, fmt.Errorf("invalid FOR variable %q", variable)
-		}
-		return Command{Raw: raw, Type: CommandFor, Variable: "$" + variable, Expression: strings.TrimSpace(parts[1])}, nil
-	}
-	if strings.HasPrefix(upper, string(CommandAlias)+" ") {
-		rest := strings.TrimSpace(trimmed[len(CommandAlias):])
-		separator := strings.IndexAny(rest, " \t\r\n")
-		if separator <= 0 || strings.TrimSpace(rest[separator:]) == "" {
-			return Command{}, fmt.Errorf("ALIAS syntax is ALIAS name command")
-		}
-		name := strings.TrimSpace(rest[:separator])
-		if !validName(name) {
-			return Command{}, fmt.Errorf("invalid alias name %q", name)
-		}
-		return Command{Raw: raw, Type: CommandAlias, Variable: name, Expression: strings.TrimSpace(rest[separator:])}, nil
-	}
-	if strings.HasPrefix(trimmed, "*") {
-		name := strings.TrimSpace(trimmed[1:])
-		if !validName(name) {
-			return Command{}, fmt.Errorf("alias reference syntax is *name")
-		}
-		return Command{Raw: raw, Type: CommandAliasRef, Variable: name}, nil
-	}
-	for _, kind := range []CommandType{CommandInsert, CommandExec, CommandSet, CommandIf, CommandImage, CommandLink, CommandHTML, CommandRawXML, CommandQuery} {
-		if upper == string(kind) {
-			return Command{}, fmt.Errorf("%s requires an expression", kind)
-		}
-		prefix := string(kind) + " "
-		if strings.HasPrefix(upper, prefix) {
-			return Command{Raw: raw, Type: kind, Expression: strings.TrimSpace(trimmed[len(prefix):])}, nil
-		}
-	}
-	if strings.HasPrefix(trimmed, "=") {
-		return Command{Raw: raw, Type: CommandInsert, Expression: strings.TrimSpace(trimmed[1:])}, nil
-	}
-	if strings.HasPrefix(trimmed, "!") {
-		return Command{Raw: raw, Type: CommandExec, Expression: strings.TrimSpace(trimmed[1:])}, nil
+
+	if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "@") {
+		return Command{}, fmt.Errorf("unknown template directive %q", firstWord(trimmed))
 	}
 	return Command{Raw: raw, Type: CommandInsert, Expression: trimmed}, nil
+}
+
+func commandArgument(source, prefix string) (string, error) {
+	if source == prefix {
+		return "", fmt.Errorf("%s requires an expression", prefix)
+	}
+	if len(source) <= len(prefix) || !unicode.IsSpace(rune(source[len(prefix)])) {
+		return "", fmt.Errorf("unknown template directive %q", firstWord(source))
+	}
+	argument := strings.TrimSpace(source[len(prefix):])
+	if argument == "" {
+		return "", fmt.Errorf("%s requires an expression", prefix)
+	}
+	return argument, nil
+}
+
+func firstWord(value string) string {
+	if index := strings.IndexFunc(value, unicode.IsSpace); index >= 0 {
+		return value[:index]
+	}
+	return value
 }
 
 func validName(value string) bool {
@@ -143,12 +142,91 @@ func validName(value string) bool {
 	return value != ""
 }
 
-func splitKeyword(value, keyword string) []string {
-	for index := range value {
-		end := index + len(keyword)
-		if end <= len(value) && strings.EqualFold(value[index:end], keyword) {
-			return []string{value[:index], value[end:]}
+func splitTopLevelKeyword(value, keyword string) (string, string, bool) {
+	quote := rune(0)
+	escaped := false
+	depth := 0
+	runes := []rune(value)
+	for index, current := range runes {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if current == '\\' {
+				escaped = true
+				continue
+			}
+			if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch current {
+		case '\'', '"', '`':
+			quote = current
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		default:
+			if depth != 0 || !unicode.IsSpace(current) {
+				continue
+			}
+			start := index
+			for start < len(runes) && unicode.IsSpace(runes[start]) {
+				start++
+			}
+			end := start + len([]rune(keyword))
+			if end > len(runes) || string(runes[start:end]) != keyword {
+				continue
+			}
+			if end < len(runes) && !unicode.IsSpace(runes[end]) {
+				continue
+			}
+			left := strings.TrimSpace(string(runes[:index]))
+			right := strings.TrimSpace(string(runes[end:]))
+			return left, right, true
 		}
 	}
-	return nil
+	return "", "", false
+}
+
+func splitTopLevelAssignment(value string) (string, string, bool) {
+	quote := rune(0)
+	escaped := false
+	depth := 0
+	for index, current := range value {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if current == '\\' {
+				escaped = true
+				continue
+			}
+			if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch current {
+		case '\'', '"', '`':
+			quote = current
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '=':
+			if depth == 0 {
+				return strings.TrimSpace(value[:index]), strings.TrimSpace(value[index+1:]), true
+			}
+		}
+	}
+	return "", "", false
 }

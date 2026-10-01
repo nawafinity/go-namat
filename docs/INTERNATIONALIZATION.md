@@ -21,9 +21,17 @@ application concerns. Register explicit Go functions for them:
 
 ```go
 options := namat.Options{
-    Functions: map[string]namat.Function{
-        "formatCurrency": formatCurrency,
-        "formatDate":     formatDate,
+    Functions: map[string]namat.FunctionSpec{
+        "formatCurrency": {
+            Params: []namat.ValueType{namat.TypeDecimal, namat.TypeString},
+            Returns: namat.TypeString,
+            Call: formatCurrency,
+        },
+        "formatDate": {
+            Params: []namat.ValueType{namat.TypeString},
+            Returns: namat.TypeString,
+            Call: formatDate,
+        },
     },
 }
 ```

@@ -20,12 +20,13 @@ const (
 )
 
 type xmlNode struct {
-	Type     xmlNodeType
-	Name     xml.Name
-	Attrs    []xml.Attr
-	Data     string
-	Target   string
-	Children []*xmlNode
+	Type             xmlNodeType
+	Name             xml.Name
+	Attrs            []xml.Attr
+	Data             string
+	Target           string
+	Children         []*xmlNode
+	commandLocations []CommandLocation
 }
 
 type xmlAttribute struct {
@@ -114,7 +115,7 @@ func writeXML(out *bytes.Buffer, n *xmlNode) {
 		out.WriteString(qname(n.Name))
 		out.WriteByte('>')
 	case xmlText:
-		_ = xml.EscapeText(out, []byte(n.Data))
+		writeXMLText(out, n.Data)
 	case xmlComment:
 		out.WriteString("<!--")
 		out.WriteString(n.Data)
@@ -134,6 +135,26 @@ func writeXML(out *bytes.Buffer, n *xmlNode) {
 	}
 }
 
+// writeXMLText escapes markup characters while preserving XML whitespace as
+// literal characters. encoding/xml.EscapeText emits newlines as character
+// references; a character reference is not permitted as document-level
+// whitespace between the XML declaration and the root element, and strict
+// OOXML consumers such as LibreOffice reject the resulting package.
+func writeXMLText(out *bytes.Buffer, value string) {
+	for len(value) > 0 {
+		index := strings.IndexAny(value, "\t\r\n")
+		if index < 0 {
+			_ = xml.EscapeText(out, []byte(value))
+			return
+		}
+		if index > 0 {
+			_ = xml.EscapeText(out, []byte(value[:index]))
+		}
+		out.WriteByte(value[index])
+		value = value[index+1:]
+	}
+}
+
 func qname(name xml.Name) string {
 	if name.Space == "" {
 		return name.Local
@@ -145,7 +166,7 @@ func (n *xmlNode) clone() *xmlNode {
 	if n == nil {
 		return nil
 	}
-	copyNode := &xmlNode{Type: n.Type, Name: n.Name, Data: n.Data, Target: n.Target, Attrs: append([]xml.Attr(nil), n.Attrs...)}
+	copyNode := &xmlNode{Type: n.Type, Name: n.Name, Data: n.Data, Target: n.Target, Attrs: append([]xml.Attr(nil), n.Attrs...), commandLocations: append([]CommandLocation(nil), n.commandLocations...)}
 	copyNode.Children = make([]*xmlNode, len(n.Children))
 	for i, child := range n.Children {
 		copyNode.Children[i] = child.clone()

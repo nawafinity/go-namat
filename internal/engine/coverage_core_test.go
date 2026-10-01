@@ -61,12 +61,12 @@ func TestCoreCommandAndErrorEdges(t *testing.T) {
 	if _, err := parseCommand(string([]byte{0xff})); err == nil {
 		t.Fatal("invalid UTF-8 command succeeded")
 	}
-	command, err := parseCommand("ALIAS greeting INS name")
-	if err != nil || command.Type != CommandAlias || command.Variable != "greeting" {
-		t.Fatalf("alias = %#v, %v", command, err)
+	command, err := parseCommand("#let greeting = name")
+	if err != nil || command.Type != CommandLet || command.Variable != "greeting" {
+		t.Fatalf("let = %#v, %v", command, err)
 	}
-	if _, err := parseCommand("ALIAS 1bad INS name"); err == nil {
-		t.Fatal("invalid alias name succeeded")
+	if _, err := parseCommand("#let 1bad = name"); err == nil {
+		t.Fatal("invalid let name succeeded")
 	}
 
 	inner := errors.New("inner")
@@ -130,19 +130,6 @@ func TestCompileAndRenderPublicFailureEdges(t *testing.T) {
 		t.Fatal("CreateReportReader accepted invalid template")
 	}
 
-	queryTemplate := &Template{options: Options{}.normalized(), pkg: &docxPackage{}, queries: []string{"one", "two"}}
-	if _, err := queryTemplate.Render(context.Background(), nil); err == nil {
-		t.Fatal("multiple queries rendered")
-	}
-	queryTemplate.queries = []string{"one"}
-	if _, err := queryTemplate.Render(context.Background(), nil); err == nil {
-		t.Fatal("query without resolver rendered")
-	}
-	queryTemplate.options.QueryResolver = func(context.Context, string) (any, error) { return nil, wantReadErr }
-	if _, err := queryTemplate.Render(context.Background(), nil); !errors.Is(err, wantReadErr) {
-		t.Fatalf("query resolver error = %v", err)
-	}
-
 	compiled, err := Compile(document, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -171,10 +158,6 @@ func TestCompileAndRenderPublicFailureEdges(t *testing.T) {
 	if _, err := invalidCompression.Render(context.Background(), nil); err == nil {
 		t.Fatal("render with invalid compression succeeded")
 	}
-	queryTemplate.queries = []string{"one", "two"}
-	if err := queryTemplate.RenderTo(context.Background(), io.Discard, nil); err == nil {
-		t.Fatal("RenderTo did not propagate render failure")
-	}
 }
 
 func TestCompilationValidationEdges(t *testing.T) {
@@ -183,9 +166,9 @@ func TestCompilationValidationEdges(t *testing.T) {
 		xml  string
 	}{
 		{"malformed XML", "<broken>[[value]]"},
-		{"malformed command", wordDocument("<w:p><w:r><w:t>[[ELSE extra]]</w:t></w:r></w:p>")},
-		{"duplicate alias", wordDocument("<w:p><w:r><w:t>[[ALIAS a INS value]]</w:t></w:r></w:p><w:p><w:r><w:t>[[ALIAS a INS other]]</w:t></w:r></w:p>")},
-		{"invalid alias body", wordDocument("<w:p><w:r><w:t>[[ALIAS a ELSE extra]]</w:t></w:r></w:p>")},
+		{"malformed command", wordDocument("<w:p><w:r><w:t>[[#else extra]]</w:t></w:r></w:p>")},
+		{"unknown directive", wordDocument("<w:p><w:r><w:t>[[#alias value]]</w:t></w:r></w:p>")},
+		{"invalid let", wordDocument("<w:p><w:r><w:t>[[#let 1bad = value]]</w:t></w:r></w:p>")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			document := testDOCX(t, map[string][]byte{"word/document.xml": []byte(test.xml)})
@@ -195,7 +178,7 @@ func TestCompilationValidationEdges(t *testing.T) {
 		})
 	}
 
-	collectXML := wordDocument("<w:p><w:r><w:t>[[INS @]]</w:t></w:r></w:p><w:p><w:r><w:t>[[IF active]]</w:t></w:r></w:p>")
+	collectXML := wordDocument("<w:p><w:r><w:t>[[unknown()]]</w:t></w:r></w:p><w:p><w:r><w:t>[[#if active]]</w:t></w:r></w:p>")
 	_, err := Compile(testDOCX(t, map[string][]byte{"word/document.xml": []byte(collectXML)}), Options{CollectErrors: true})
 	var multi *MultiError
 	if !errors.As(err, &multi) || len(multi.Errors) != 2 {
@@ -206,7 +189,7 @@ func TestCompilationValidationEdges(t *testing.T) {
 	if _, err := ListCommands(malformed, Options{}); err == nil {
 		t.Fatal("ListCommands accepted malformed XML")
 	}
-	badCommand := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument("<w:p><w:r><w:t>[[ELSE extra]]</w:t></w:r></w:p>"))})
+	badCommand := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument("<w:p><w:r><w:t>[[#else extra]]</w:t></w:r></w:p>"))})
 	if _, err := ListCommands(badCommand, Options{}); err == nil {
 		t.Fatal("ListCommands accepted malformed command")
 	}
@@ -244,23 +227,11 @@ func TestNamatValueHelperEdges(t *testing.T) {
 			t.Fatalf("formatValue(%#v) = %q, want %q", value, got, want)
 		}
 	}
-	for _, source := range []string{"= 1", "name =", "bad-name = 1"} {
-		if _, _, err := parseAssignment(source); err == nil {
-			t.Fatalf("parseAssignment(%q) succeeded", source)
-		}
-	}
-
 	functions := builtinFunctions()
-	if _, err := functions["len"](); err == nil {
-		t.Fatal("len accepted zero arguments")
-	}
-	if _, err := functions["string"](); err == nil {
-		t.Fatal("string accepted zero arguments")
-	}
-	if got, err := functions["len"]("abc"); err != nil || got != 3 {
+	if got, err := functions["len"].Call(context.Background(), "abc"); err != nil || got != int64(3) {
 		t.Fatalf("builtin len = %#v, %v", got, err)
 	}
-	if got, err := functions["string"](2); err != nil || got != "2" {
+	if got, err := functions["string"].Call(context.Background(), 2); err != nil || got != "2" {
 		t.Fatalf("builtin string = %#v, %v", got, err)
 	}
 
@@ -512,14 +483,6 @@ func TestDrawingAndObjectHelpers(t *testing.T) {
 	} {
 		if got := isObjectResult(test.value); got != test.want {
 			t.Fatalf("isObjectResult(%T) = %v, want %v", test.value, got, test.want)
-		}
-	}
-	if expressionTruthy(nil) || expressionTruthy(false) || expressionTruthy(" ") || expressionTruthy(float64(0)) || expressionTruthy(float32(0)) || expressionTruthy(0) {
-		t.Fatal("false-like value was truthy")
-	}
-	for _, value := range []any{true, "x", float64(1), float32(1), 1, struct{}{}} {
-		if !expressionTruthy(value) {
-			t.Fatalf("expressionTruthy(%#v) = false", value)
 		}
 	}
 	if math.IsNaN(numericValue(math.NaN())) == false {

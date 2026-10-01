@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
 type fakeTemporaryFile struct {
 	name     string
 	writeErr error
+	short    bool
 	syncErr  error
 	closeErr error
 }
@@ -27,6 +29,9 @@ func (f *fakeTemporaryFile) Write(p []byte) (int, error) {
 	if f.writeErr != nil {
 		return 0, f.writeErr
 	}
+	if f.short && len(p) > 0 {
+		return len(p) - 1, nil
+	}
 	return len(p), nil
 }
 func (f *fakeTemporaryFile) Name() string { return f.name }
@@ -34,15 +39,24 @@ func (f *fakeTemporaryFile) Sync() error  { return f.syncErr }
 func (f *fakeTemporaryFile) Close() error { return f.closeErr }
 
 type fakeFileSystem struct {
-	statExists bool
-	statErr    error
-	createErr  error
-	temporary  *fakeTemporaryFile
-	removeErr  error
-	renameErr  error
+	statExists  bool
+	statErr     error
+	createErr   error
+	createErrs  []error
+	temporary   *fakeTemporaryFile
+	temporaries []*fakeTemporaryFile
+	createCalls int
+	removeErrs  []error
+	removeCalls int
+	linkErr     error
+	linkCalls   [][2]string
+	renameErr   error
+	renameErrs  []error
+	renameCalls [][2]string
+	files       map[string]string
 }
 
-func (f *fakeFileSystem) Stat(string) (os.FileInfo, error) {
+func (f *fakeFileSystem) Stat(name string) (os.FileInfo, error) {
 	if f.statExists {
 		return fakeFileInfo{}, nil
 	}
@@ -52,16 +66,64 @@ func (f *fakeFileSystem) Stat(string) (os.FileInfo, error) {
 	return nil, os.ErrNotExist
 }
 func (f *fakeFileSystem) CreateTemp(string, string) (temporaryFile, error) {
+	call := f.createCalls
+	f.createCalls++
+	if call < len(f.createErrs) && f.createErrs[call] != nil {
+		return nil, f.createErrs[call]
+	}
 	if f.createErr != nil {
 		return nil, f.createErr
+	}
+	if call < len(f.temporaries) {
+		return f.temporaries[call], nil
 	}
 	if f.temporary == nil {
 		f.temporary = &fakeTemporaryFile{name: "temporary"}
 	}
 	return f.temporary, nil
 }
-func (f *fakeFileSystem) Remove(string) error         { return f.removeErr }
-func (f *fakeFileSystem) Rename(string, string) error { return f.renameErr }
+func (f *fakeFileSystem) Link(oldName, newName string) error {
+	f.linkCalls = append(f.linkCalls, [2]string{oldName, newName})
+	if f.linkErr != nil {
+		return f.linkErr
+	}
+	if f.files != nil {
+		if _, exists := f.files[newName]; exists {
+			return os.ErrExist
+		}
+		f.files[newName] = f.files[oldName]
+	}
+	return nil
+}
+func (f *fakeFileSystem) Remove(name string) error {
+	call := f.removeCalls
+	f.removeCalls++
+	var err error
+	if call < len(f.removeErrs) {
+		err = f.removeErrs[call]
+	}
+	if err == nil && f.files != nil {
+		delete(f.files, name)
+	}
+	return err
+}
+func (f *fakeFileSystem) Rename(oldName, newName string) error {
+	f.renameCalls = append(f.renameCalls, [2]string{oldName, newName})
+	call := len(f.renameCalls) - 1
+	err := f.renameErr
+	if call < len(f.renameErrs) {
+		err = f.renameErrs[call]
+	}
+	if err != nil {
+		return err
+	}
+	if f.files != nil {
+		value := f.files[oldName]
+		delete(f.files, oldName)
+		f.files[newName] = value
+	}
+	return nil
+}
 
 type fakeFileInfo struct{}
 
@@ -98,7 +160,7 @@ func TestMainAndRunArgumentEdges(t *testing.T) {
 		t.Fatalf("main exit code = %d", code)
 	}
 
-	for _, args := range [][]string{nil, {"inspect", "--bad"}, {"metadata"}, {"render", "--bad"}, {"render"}} {
+	for _, args := range [][]string{nil, {"inspect", "--bad"}, {"lint"}, {"lint", "--bad"}, {"metadata"}, {"render", "--bad"}, {"render"}} {
 		var stdout, stderr bytes.Buffer
 		if code := run(args, &stdout, &stderr); code != 2 {
 			t.Fatalf("run(%v) = %d", args, code)
@@ -156,6 +218,11 @@ func TestInspectMetadataAndRenderCommands(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
+	if code := run([]string{"lint", "--data", dataPath, "--json", templatePath}, &stdout, &stderr); code != 0 || !bytes.Contains(stdout.Bytes(), []byte(`"dataValidated":true`)) {
+		t.Fatalf("lint code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
 	if code := run([]string{"metadata", templatePath}, &stdout, &stderr); code != 0 || !bytes.Contains(stdout.Bytes(), []byte(`"Title": ""`)) {
 		t.Fatalf("metadata code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -184,7 +251,7 @@ func TestInspectFailureAndOutputEdges(t *testing.T) {
 	if err := os.WriteFile(invalidPath, []byte("bad"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(compileInvalidPath, syntheticTemplateCommand(t, "[[INS @]]"), 0o600); err != nil {
+	if err := os.WriteFile(compileInvalidPath, syntheticTemplateCommand(t, "[[@]]"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -196,7 +263,7 @@ func TestInspectFailureAndOutputEdges(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"inspect", validPath}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "INS: 1") {
+	if code := run([]string{"inspect", validPath}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "insert: 1") {
 		t.Fatalf("human inspect code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	wantErr := errors.New("write")
@@ -268,10 +335,12 @@ func TestAtomicWriteInjectedFailures(t *testing.T) {
 		{"stat", &fakeFileSystem{statErr: wantErr}, false},
 		{"create", &fakeFileSystem{createErr: wantErr}, true},
 		{"write", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp", writeErr: wantErr}}, true},
+		{"short write", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp", short: true}}, true},
 		{"sync", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp", syncErr: wantErr}}, true},
 		{"close", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp", closeErr: wantErr}}, true},
-		{"remove", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp"}, removeErr: wantErr}, true},
-		{"rename", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp"}, renameErr: wantErr}, true},
+		{"link", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp"}, linkErr: wantErr}, false},
+		{"linked temporary cleanup", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp"}, removeErrs: []error{wantErr}}, false},
+		{"replace rename", &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp"}, renameErr: wantErr}, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -280,9 +349,188 @@ func TestAtomicWriteInjectedFailures(t *testing.T) {
 			}
 		})
 	}
-	fs := &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp"}, removeErr: os.ErrNotExist}
+	fs := &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp"}}
 	if err := atomicWriteWithFS(fs, "report.docx", []byte("data"), true); err != nil {
 		t.Fatalf("successful injected write: %v", err)
+	}
+}
+
+func TestAtomicWriteWithoutForceDoesNotOverwriteRacingDestination(t *testing.T) {
+	fs := &fakeFileSystem{
+		temporary: &fakeTemporaryFile{name: "new.tmp"},
+		linkErr:   os.ErrExist,
+		files: map[string]string{
+			"new.tmp":     "new",
+			"report.docx": "racing writer",
+		},
+	}
+	err := atomicWriteWithFS(fs, "report.docx", []byte("new"), false)
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("atomicWriteWithFS error = %v, want destination-exists failure", err)
+	}
+	if got := fs.files["report.docx"]; got != "racing writer" {
+		t.Fatalf("racing destination was overwritten with %q", got)
+	}
+	if len(fs.renameCalls) != 0 {
+		t.Fatalf("non-replacing write called Rename: %#v", fs.renameCalls)
+	}
+}
+
+func TestAtomicWriteReportsShortWrite(t *testing.T) {
+	fs := &fakeFileSystem{temporary: &fakeTemporaryFile{name: "tmp", short: true}}
+	if err := atomicWriteWithFS(fs, "report.docx", []byte("data"), false); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("atomicWriteWithFS error = %v, want io.ErrShortWrite", err)
+	}
+}
+
+func TestAtomicReplaceRestoresOriginalWhenInstallingNewFileFails(t *testing.T) {
+	directErr := errors.New("destination exists")
+	installErr := errors.New("install failed")
+	fs := &fakeFileSystem{
+		statExists: true,
+		temporaries: []*fakeTemporaryFile{
+			{name: "new.tmp"},
+			{name: "backup.tmp"},
+		},
+		renameErrs: []error{directErr, nil, installErr, nil},
+		files: map[string]string{
+			"new.tmp":     "new",
+			"backup.tmp":  "placeholder",
+			"report.docx": "original",
+		},
+	}
+
+	err := atomicWriteWithFS(fs, "report.docx", []byte("new"), true)
+	if !errors.Is(err, installErr) {
+		t.Fatalf("atomicWriteWithFS error = %v, want install failure", err)
+	}
+	wantCalls := [][2]string{
+		{"new.tmp", "report.docx"},
+		{"report.docx", "backup.tmp"},
+		{"new.tmp", "report.docx"},
+		{"backup.tmp", "report.docx"},
+	}
+	if !reflect.DeepEqual(fs.renameCalls, wantCalls) {
+		t.Fatalf("rename calls = %#v, want restore sequence %#v", fs.renameCalls, wantCalls)
+	}
+	if got := fs.files["report.docx"]; got != "original" {
+		t.Fatalf("restored output = %q, want original content", got)
+	}
+	if _, exists := fs.files["backup.tmp"]; exists {
+		t.Fatal("backup still exists after restoring the original output")
+	}
+}
+
+func TestAtomicReplaceFallbackFailures(t *testing.T) {
+	directErr := errors.New("destination exists")
+	wantErr := errors.New("failure")
+	newAndBackup := func(backup *fakeTemporaryFile) []*fakeTemporaryFile {
+		return []*fakeTemporaryFile{{name: "new.tmp"}, backup}
+	}
+	tests := []struct {
+		name string
+		fs   *fakeFileSystem
+	}{
+		{
+			name: "destination stat",
+			fs: &fakeFileSystem{
+				statErr:    wantErr,
+				temporary:  &fakeTemporaryFile{name: "new.tmp"},
+				renameErrs: []error{directErr},
+			},
+		},
+		{
+			name: "backup creation",
+			fs: &fakeFileSystem{
+				statExists:  true,
+				temporaries: newAndBackup(&fakeTemporaryFile{name: "unused"}),
+				createErrs:  []error{nil, wantErr},
+				renameErrs:  []error{directErr},
+			},
+		},
+		{
+			name: "backup close",
+			fs: &fakeFileSystem{
+				statExists:  true,
+				temporaries: newAndBackup(&fakeTemporaryFile{name: "backup.tmp", closeErr: wantErr}),
+				renameErrs:  []error{directErr},
+			},
+		},
+		{
+			name: "backup placeholder removal",
+			fs: &fakeFileSystem{
+				statExists:  true,
+				temporaries: newAndBackup(&fakeTemporaryFile{name: "backup.tmp"}),
+				removeErrs:  []error{wantErr},
+				renameErrs:  []error{directErr},
+			},
+		},
+		{
+			name: "move original to backup",
+			fs: &fakeFileSystem{
+				statExists:  true,
+				temporaries: newAndBackup(&fakeTemporaryFile{name: "backup.tmp"}),
+				renameErrs:  []error{directErr, wantErr},
+			},
+		},
+		{
+			name: "restore original",
+			fs: &fakeFileSystem{
+				statExists:  true,
+				temporaries: newAndBackup(&fakeTemporaryFile{name: "backup.tmp"}),
+				renameErrs:  []error{directErr, nil, errors.New("install failed"), wantErr},
+			},
+		},
+		{
+			name: "backup cleanup",
+			fs: &fakeFileSystem{
+				statExists:  true,
+				temporaries: newAndBackup(&fakeTemporaryFile{name: "backup.tmp"}),
+				removeErrs:  []error{nil, wantErr},
+				renameErrs:  []error{directErr, nil, nil},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := atomicWriteWithFS(test.fs, "report.docx", []byte("new"), true)
+			if !errors.Is(err, wantErr) {
+				t.Fatalf("atomicWriteWithFS error = %v, want injected failure", err)
+			}
+			if test.name == "restore original" && !strings.Contains(err.Error(), "backup.tmp") {
+				t.Fatalf("restore failure does not identify recoverable backup: %v", err)
+			}
+		})
+	}
+}
+
+func TestAtomicReplaceFallbackSucceeds(t *testing.T) {
+	fs := &fakeFileSystem{
+		statExists: true,
+		temporaries: []*fakeTemporaryFile{
+			{name: "new.tmp"},
+			{name: "backup.tmp"},
+		},
+		renameErrs: []error{errors.New("destination exists"), nil, nil},
+	}
+	if err := atomicWriteWithFS(fs, "report.docx", []byte("new"), true); err != nil {
+		t.Fatalf("atomicWriteWithFS: %v", err)
+	}
+	if len(fs.renameCalls) != 3 {
+		t.Fatalf("rename calls = %#v, want direct attempt plus backup replacement", fs.renameCalls)
+	}
+}
+
+func TestOSFileSystemRemove(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "remove-me")
+	if err := os.WriteFile(path, []byte("temporary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := (osFileSystem{}).Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("removed file stat error = %v", err)
 	}
 }
 

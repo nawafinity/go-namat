@@ -23,17 +23,28 @@ var (
 
 // Error describes a template failure and the package part where it occurred.
 type Error struct {
-	Part    string
-	Command string
-	Err     error
+	Part         string
+	Paragraph    int
+	CommandIndex int
+	Start        int
+	End          int
+	Command      string
+	Err          error
 }
 
 func (e *Error) Error() string {
+	location := e.Part
+	if e.Paragraph > 0 {
+		location += fmt.Sprintf(": paragraph %d", e.Paragraph)
+	}
+	if e.CommandIndex > 0 {
+		location += fmt.Sprintf(": command %d", e.CommandIndex)
+	}
 	switch {
-	case e.Part != "" && e.Command != "":
-		return fmt.Sprintf("namat: %s: command %q: %v", e.Part, e.Command, e.Err)
-	case e.Part != "":
-		return fmt.Sprintf("namat: %s: %v", e.Part, e.Err)
+	case location != "" && e.Command != "":
+		return fmt.Sprintf("namat: %s: %q: %v", location, e.Command, e.Err)
+	case location != "":
+		return fmt.Sprintf("namat: %s: %v", location, e.Err)
 	default:
 		return fmt.Sprintf("namat: %v", e.Err)
 	}

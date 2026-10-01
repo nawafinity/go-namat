@@ -15,7 +15,7 @@
 [![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/nawafinity/go-namat.svg)](https://pkg.go.dev/github.com/nawafinity/go-namat)
 [![CI](https://github.com/nawafinity/go-namat/actions/workflows/ci.yml/badge.svg)](https://github.com/nawafinity/go-namat/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/statement%20coverage-100%25-brightgreen)](docs/TESTING.md)
+[![Coverage](https://img.shields.io/badge/statement%20coverage-gated-brightgreen)](docs/TESTING.md)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 
 [English](README.md) · **العربية**
@@ -98,15 +98,15 @@ go get github.com/nawafinity/go-namat
 ```text
 فاتورة العميل: [[customer.name]]
 
-[[IF invoice.total > 0]]
+[[#if invoice.total > 0]]
 الإجمالي: [[invoice.total]]
-[[ELSE]]
+[[#else]]
 لا يوجد رصيد مستحق.
-[[END-IF]]
+[[/if]]
 
-[[FOR item IN invoice.items]]
-[[$idx + 1]]. [[$item.name]]
-[[END-FOR item]]
+[[#each invoice.items as item]]
+[[loop.number]]. [[item.name]]
+[[/each]]
 ```
 
 ### تحضير القالب مرة واحدة وإنشاء تقارير متعددة
@@ -154,30 +154,32 @@ func main() {
 
 يقدّم المسار [`examples/complete`](examples/complete) مثالًا مستقلًا ينشئ تقريرًا
 عربيًا يتضمن جدولًا وصورة ورابطًا وشروطًا وحلقات.
+وللاختبار المكثف، يضع [`examples/advanced`](examples/advanced) جداول مهام داخل
+صفوف مشاريع متكررة، ويستدعي الدوال المسجلة من مستويي الحلقات، بما في ذلك دوال
+تعيد روابط ورسومًا مولّدة.
 
 <a id="template-language" name="template-language"></a>
 
 ## 🧩 لغة القوالب
 
 تستخدم الأوامر المحددين `[[` و`]]` افتراضيًا، ويمكن تغييرهما من خلال
-`Options`.
+`Options`. العقد الوحيد المدعوم هو `v1`، ويمكن للتطبيق تثبيته صراحة عبر
+`LanguageVersion: namat.LanguageVersionV1`. لا يكتشف نَمَط صيغة قديمة تلقائيًا
+ولا يعود إليها.
 
 | الأمر | الغرض |
 | --- | --- |
-| `[[value]]`, `[[INS value]]`, `[[= value]]` | إدراج نص |
-| `[[EXEC name = expression]]`, `[[! name = expression]]` | تعيين قيمة محلية دون إخراج |
-| `[[SET name = expression]]` | صيغة تعيين صريحة |
-| `[[IF expression]]` / `[[ELSE]]` / `[[END-IF]]` | إظهار كتلة من الفقرات أو صفوف الجداول وفق شرط |
-| `[[FOR item IN values]]` / `[[END-FOR item]]` | تكرار فقرات أو صفوف جداول كاملة |
-| `[[IMAGE expression]]` | إدراج صورة مضمنة |
-| `[[LINK expression]]` | إدراج رابط خارجي |
-| `[[HTML expression]]` | إدراج Word HTML altChunk |
-| `[[RAW-XML expression]]` | إدراج OOXML موثوق عند تفعيله صراحة |
-| `[[QUERY query text]]` | جلب بيانات التقرير عبر دالة يوفّرها التطبيق |
-| `[[ALIAS name INS expression]]`, `[[*name]]` | تعريف أمر كامل وإعادة استخدامه |
+| `[[expression]]` | إدراج قيمة بسيطة |
+| `[[#let name = expression]]` | تعريف قيمة ثابتة ضمن النطاق دون إخراج |
+| `[[#if expression]]` / `[[#else]]` / `[[/if]]` | إظهار كتلة شرطية من الفقرات أو صفوف الجداول |
+| `[[#each values as item]]` / `[[/each]]` | تكرار فقرات أو صفوف جداول كاملة |
+| `[[@image expression]]` | إدراج صورة مضمنة |
+| `[[@link expression]]` | إدراج رابط خارجي |
+| `[[@html expression]]` | إدراج Word HTML altChunk |
+| `[[@raw-xml expression]]` | إدراج OOXML موثوق عند تفعيله صراحة |
 
-ينبغي أن تكون علامات `IF` و`FOR` البنيوية في فقرة مستقلة أو صف جدول مستقل.
-كما يجب أن يكون `HTML` و`RAW-XML` في فقرة مستقلة.
+يجب أن تكون الأوامر البنيوية و`#let` في فقرة مستقلة أو صف جدول مستقل، وأن يكون
+`@html` و`@raw-xml` في فقرة مستقلة.
 
 قد يقسم Word الأمر الواحد بين عدة XML runs، وأحيانًا بين فقرات متجاورة.
 يعيد نَمَط تجميع الأوامر المجزأة المدعومة قبل تحضير القالب.
@@ -189,24 +191,24 @@ func main() {
 
 - الخرائط والبنى (`struct`) وأسماء حقول JSON والمؤشرات والمصفوفات والشرائح
   (`slice`) والنصوص والفهارس؛
-- الوصول إلى الخصائص، والتسلسل الاختياري، ومعامل القيمة البديلة `??`؛
-- العمليات الحسابية وعمليات المقارنة والمساواة والمنطق والعمليات الأحادية؛
-- التعبيرات الشرطية: `condition ? yes : no`؛
+- الوصول إلى الخصائص والوصول الاختياري مثل `customer?.name`؛
+- عمليات حسابية ومقارنات ومساواة ومنطق ذات أنواع صارمة؛
 - المصفوفات والكائنات: `[1, 2]` و`{ url: url, label: name }`؛
-- السلاسل القالبية مثل `` `Score: ${score}` ``؛
-- دوال النصوص مثل `.slice()` و`.trim()` و`.toUpperCase()` و`.contains()`؛
-- دوال المجموعات مثل `.join()` و`.includes()` و`.length`؛
-- دوال Go التي يسجلها التطبيق صراحة.
+- المرشحات مثل `name | trim | upper` و`customer?.name | default("—")`؛
+- أعداد صحيحة موقعة وغير موقعة وقيم `namat.Decimal` الدقيقة؛
+- دوال Go مسجلة صراحة مع وصف لأنواع المدخلات والناتج.
 
-تبدأ متغيرات الحلقات بالرمز `$`، ويمثل `$idx` الفهرس الذي يبدأ من الصفر.
-وتحل دوال Go المسجلة محل دوال JavaScript المساعدة، مما يجعلها قابلة للاختبار
-وقياس الأداء والمراجعة كأي شفرة Go أخرى.
+لمتغير الحلقة اسم عادي، وتوجد معلوماتها في `loop.index` و`loop.number`
+و`loop.first` و`loop.last` و`loop.parent`. تقبل الشروط `bool` فقط. ويعد الحقل
+المفقود و`null` عند الإدراج وخلط الأنواع في `+` والمقارنة بين أنواع غير متوافقة
+أخطاءً ما لم تعالج صراحة. ولا يمكن استدعاء قيم الدوال الموجودة في البيانات؛
+بل تسجل الدوال المقصودة عبر `Options.Functions` بوصف `FunctionSpec`.
 
 ## 🖼️ المحتوى الغني
 
 ### الصور
 
-يقبل الأمر `IMAGE` قيمة `namat.Image` أو كائنًا بالحقول المكافئة. يدعم نَمَط
+يقبل الأمر `@image` قيمة `namat.Image` أو كائنًا بالحقول المكافئة. يدعم نَمَط
 PNG وJPEG وGIF وSVG كصور مضمنة، مع تحديد الأبعاد بالسنتيمتر والدوران والنص
 البديل والتعليق الاختياري.
 
@@ -225,15 +227,16 @@ namat.Image{
 
 ### الروابط وHTML وOOXML
 
-- يقبل `LINK` قيمة `namat.Link` أو تعبير كائن، ويسمح افتراضيًا ببروتوكولات
+- يقبل `@link` قيمة `namat.Link` أو تعبير كائن، ويسمح افتراضيًا ببروتوكولات
   `http` و`https` و`mailto` فقط.
-- يستخدم `HTML` آلية OOXML `altChunk`. يدعمها Microsoft Word، بينما قد يختلف
-  استيرادها في LibreOffice وGoogle Docs.
-- يكون `RAW-XML` معطلًا افتراضيًا لأنه يتجاوز escaping. لا تفعّله إلا عندما
+- يستخدم `@html` آلية OOXML `altChunk`. يدعمها Microsoft Word، بينما قد يختلف
+  استيرادها في LibreOffice وGoogle Docs. تُضمّن حمولات HTML وSVG دون تنقية؛
+  استخدم محتوى موثوقًا أو منقّى داخل التطبيق.
+- يكون `@raw-xml` معطلًا افتراضيًا لأنه يتجاوز escaping. لا تفعّله إلا عندما
   يكون القالب والقيم المدرجة موثوقة.
 
 ```text
-[[LINK ({ url: project.url, label: project.name })]]
+[[@link ({ url: project.url, label: project.name })]]
 ```
 
 ```go
@@ -263,21 +266,10 @@ metadata, err := namat.GetMetadata(documentBytes)
 الكلمات المعتمد على التخطيط. كما يحجب فاحص CLI تعبيرات الأوامر افتراضيًا للحد
 من كشف البيانات دون قصد.
 
-### Query resolver
+### أرقام JSON الدقيقة
 
-يمكن للقالب إعلان `QUERY` واحد. يمرر نَمَط محتواه دون تعديل إلى دالة يملكها
-التطبيق قبل إنشاء التقرير.
-
-```go
-options := namat.Options{
-	QueryResolver: func(ctx context.Context, query string) (any, error) {
-		return database.ReportData(ctx, query)
-	},
-}
-```
-
-لا يفسر نَمَط SQL أو GraphQL أو أي لغة استعلام أخرى، ولا يفتح اتصالًا شبكيًا
-بنفسه.
+استخدم `namat.DecodeJSON` لبيانات JSON. فهو يحافظ على `int64` و`uint64`
+والقيم العشرية الدقيقة بدل تحويل كل الأرقام إلى `float64`.
 
 ## 💻 واجهة سطر الأوامر
 
@@ -286,12 +278,17 @@ options := namat.Options{
 ```text
 namat inspect template.docx
 namat inspect --json template.docx
+namat lint --data data.json template.docx
 namat metadata document.docx
 namat render --data data.json --out report.docx template.docx
 ```
 
-يرفض `render` استبدال ملف موجود ما لم يُمرر `--force` صراحة، ويكتب النتيجة من
-خلال إعادة تسمية ذرية لملف مؤقت.
+يرفض `render` استبدال ملف موجود ما لم يُمرر `--force` صراحة. ويكتب ملفًا
+مؤقتًا داخل مجلد الوجهة ويزامنه، ثم يستخدم hard link ذرية لا تسمح بالاستبدال
+بحيث لا يستبدل ملفًا أنشئ بالتزامن. ومع `--force`، يحاول أولًا استخدام استبدال
+ذري تدعمه المنصة. وإذا رفضت المنصة ذلك، يستخدم نسخة احتياطية جانبية قابلة
+للاستعادة أثناء تثبيت الملف الجديد؛ وهذه الآلية البديلة ليست عملية استبدال
+ذرية واحدة.
 
 ```bash
 go build -trimpath -ldflags="-s -w" ./cmd/namat
@@ -299,9 +296,16 @@ go build -trimpath -ldflags="-s -w" ./cmd/namat
 
 ## 🛡️ نموذج الأمان
 
-لا تصل القوالب إلا إلى البيانات الممررة إلى `Render` ودوال Go التي يسجلها
-التطبيق صراحة. ولا تحصل تلقائيًا على صلاحيات لنظام الملفات أو العمليات أو
-متغيرات البيئة أو آليات الانعكاس أو الشبكة.
+تصل القوالب إلى البيانات الممررة إلى `Render` ودوال Go التي يسجلها التطبيق
+صراحة. ولا يمكنها استدعاء قيم الدوال الموجودة في بيانات التقرير، كما لا تحصل
+تلقائيًا على صلاحيات لنظام الملفات أو العمليات أو متغيرات البيئة أو واجهات
+الانعكاس أو الشبكة. ومع القوالب غير الموثوقة، لا تعرض إلا دوال راجعها التطبيق
+عمدًا.
+
+القوالب المحضّرة غير قابلة للتغيير وآمنة للاستخدام المتزامن. لكن هذا الضمان
+لا يجعل استدعاءات التطبيق أو الحالة التي تلتقطها آمنة تلقائيًا؛ إذ يجب أن
+تدعم `Functions` و`ErrorHandler` مستوى التزامن الذي يستخدمه
+التطبيق.
 
 توفّر `Options` حدودًا لكل من:
 
@@ -311,7 +315,14 @@ go build -trimpath -ldflags="-s -w" ./cmd/namat
 - عدد أجزاء الحزمة؛
 - حجم الملف الناتج؛
 - إجمالي تكرارات الحلقات؛
+- طول التعبير وعدد رموزه وعمق AST وإجمالي خطوات التقييم؛
 - مدة إنشاء التقرير.
+
+يعمل سياق إنشاء التقرير و`Timeout` بصورة تعاونية؛ إذ يفحصهما نَمَط بين
+عمليات الإنشاء، لكنه لا يستطيع إيقاف استدعاء تابع للتطبيق وهو عالق. ينبغي
+تستقبل الدوال المسجلة سياق التصيير، ويجب أن تعود الدوال ومعالجات الأخطاء بسرعة
+وأن تطبق حدودها الخاصة على العمليات التابعة. راجع [سياسة الأمان](SECURITY.md)
+للقيم الافتراضية ونموذج الثقة الكامل.
 
 يرفض قارئ الحزمة مسارات traversal والمدخلات المكررة والأجزاء المتجاوزة للحدود
 والحزم غير الصالحة. راجع [سياسة الأمان](SECURITY.md) قبل قبول قوالب من مستخدمين
@@ -329,7 +340,7 @@ go build -trimpath -ldflags="-s -w" ./cmd/namat
 | PNG وJPEG وGIF وSVG | مدعومة | صور مضمنة مع صورة بديلة اختيارية لـSVG |
 | الروابط الخارجية | مدعومة | مع قائمة سماح للبروتوكولات |
 | HTML altChunk | مدعومة | داخل المستند الرئيسي فقط |
-| OOXML الحرفي | اختياري | للمدخلات الموثوقة فقط |
+| OOXML الخام الصريح | اختياري | عبر `@raw-xml` وللمدخلات الموثوقة فقط |
 | JavaScript العام | غير مدعوم | يُستبدل بدوال Go مسجلة |
 | الصور العائمة | لا ينشئها المحرك | الصور المضمنة أكثر قابلية للنقل |
 
@@ -340,12 +351,12 @@ go build -trimpath -ldflags="-s -w" ./cmd/namat
 
 | بوابة الجودة | الضمان الحالي |
 | --- | --- |
-| تغطية العبارات البرمجية | **100%** بصورة مستقلة للواجهة العامة، ومحرك التقارير، ومحرك التعبيرات، وCLI، والمثال الكامل |
-| التغطية السلوكية | ترتبط كل ميزة أساسية موثقة باختبار آلي |
-| المنصات | يعمل CI على Linux وWindows وmacOS |
+| تغطية العبارات البرمجية | حدود دنيا مستقلة لكل حزمة تفرضها CI؛ راجع `docs/TESTING.md` |
+| التغطية السلوكية | ترتبط الميزات الأساسية المتحقق منها بأدلة آلية، بينما يبقى التوافق البصري داخل العملاء بوابة غير مكتملة قبل v1 |
+| المنصات | يعمل CI على Linux وWindows وmacOS باستخدام Go 1.23 وخط إصدار Go الحالي |
 | التزامن | كاشف سباقات البيانات واختبارات إنشاء التقارير المتزامن |
-| المتانة | اختبارات fuzz للأوامر وحزم ZIP والتقارير والتعبيرات |
-| بيانات الاختبار | بيانات مولّدة واصطناعية ومحايدة وغير مرتبطة بأي منتج |
+| المتانة | يجري CI اختبارات fuzz للأوامر وحزم ZIP والتقارير والتعبيرات، ويشترط نجاح LibreOffice في تحويل fixture العامة |
+| بيانات الاختبار | بيانات مولّدة واصطناعية ومحايدة وغير مرتبطة بأي منتج، مع ترخيص صريح للـfixtures العامة |
 
 ```bash
 go test ./...
@@ -367,6 +378,7 @@ go-namat/
 ├── cmd/namat/          optional native CLI
 ├── docs/               architecture, compatibility, testing, and performance
 ├── examples/complete/  complete synthetic report example
+├── examples/advanced/  nested tables and functions inside loops
 ├── internal/engine/    private DOCX compiler, renderer, and focused tests
 ├── internal/expr/      native expression lexer, parser, and evaluator
 ├── namat.go             stable public package facade
@@ -395,6 +407,8 @@ import "github.com/nawafinity/go-namat"
 | [Internationalization](docs/INTERNATIONALIZATION.md) | Unicode وRTL ومسؤوليات التنسيق المحلي |
 | [Performance](docs/PERFORMANCE.md) | نموذج الأداء وإرشادات القياس |
 | [Roadmap](docs/ROADMAP.md) | الأعمال المتبقية قبل الإصدار 1.0 |
+| [Migration](docs/MIGRATION.md) | مسودة عقد الانتقال من مرحلة ما قبل v1 وقائمة تحقق للمستخدمين |
+| [Releasing](docs/RELEASING.md) | بوابات الإصدار والتحقق داخل العملاء وتوقيع الملفات |
 | [Security](SECURITY.md) | نموذج الثقة والإبلاغ عن الثغرات |
 | [Code of Conduct](CODE_OF_CONDUCT.md) | معايير المجتمع وآلية الإبلاغ |
 | [Changelog](CHANGELOG.md) | التغييرات المهمة في المشروع |

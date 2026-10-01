@@ -10,8 +10,10 @@ import (
 
 func TestCommandSyntaxVariantsAndAssignments(t *testing.T) {
 	document := wordDocument(`
-<w:p><w:r><w:t>[[name]]|[[INS name]]|[[= name]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[! subtotal = 2 + 3]][[SET total = subtotal * 2]][[total]]</w:t></w:r></w:p>`)
+<w:p><w:r><w:t>[[name]]|[[name]]|[[name]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#let subtotal = 2 + 3]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#let total = subtotal * 2]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[total]]</w:t></w:r></w:p>`)
 	report, err := CreateReport(context.Background(), testDOCX(t, map[string][]byte{
 		"word/document.xml": []byte(document),
 	}), map[string]any{"name": "value"}, Options{})
@@ -24,21 +26,17 @@ func TestCommandSyntaxVariantsAndAssignments(t *testing.T) {
 	}
 }
 
-func TestObjectResultsAndLineBreakOptions(t *testing.T) {
+func TestStrictObjectResultsAndLineBreakOptions(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{
 		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[value]]</w:t></w:r></w:p>`)),
 	})
-	report, err := CreateReport(context.Background(), template, map[string]any{
+	if _, err := CreateReport(context.Background(), template, map[string]any{
 		"value": map[string]int{"x": 1},
-	}, Options{AllowObjectResults: true})
-	if err != nil {
-		t.Fatalf("AllowObjectResults render: %v", err)
-	}
-	if got := documentText(t, report); !strings.Contains(got, "map[x:1]") {
-		t.Fatalf("object result missing: %q", got)
+	}, Options{}); err == nil || !errors.Is(err, ErrObjectResult) {
+		t.Fatalf("object insertion error = %v", err)
 	}
 
-	report, err = CreateReport(context.Background(), template, map[string]any{
+	report, err := CreateReport(context.Background(), template, map[string]any{
 		"value": "first\nsecond",
 	}, Options{DisableLineBreaks: true})
 	if err != nil {
@@ -50,48 +48,67 @@ func TestObjectResultsAndLineBreakOptions(t *testing.T) {
 	}
 }
 
-func TestQueryAndAliasFailureModes(t *testing.T) {
-	queryTemplate := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[QUERY synthetic query]]</w:t></w:r></w:p>`)),
+func TestReservedWordsRemainOrdinaryDataNames(t *testing.T) {
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(
+		`<w:p><w:r><w:t>[[image]]|[[link]]|[[html]]|[[query]]|[[!active]]</w:t></w:r></w:p>`,
+	))})
+	report, err := CreateReport(context.Background(), template, map[string]any{
+		"image": "i", "link": "l", "html": "h", "query": "q", "active": false,
+	}, Options{})
+	if err != nil {
+		t.Fatalf("render reserved data fields: %v", err)
+	}
+	if text := documentText(t, report); !strings.Contains(text, "i|l|h|q|true") {
+		t.Fatalf("reserved field output = %q", text)
+	}
+}
+
+func TestScannerHandlesClosingDelimiterInsideStringsAndIndexes(t *testing.T) {
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(
+		`<w:p><w:r><w:t>[[ 'inside ]] text' ]]|[[items[0]]]</w:t></w:r></w:p>`,
+	))})
+	report, err := CreateReport(context.Background(), template, map[string]any{"items": []string{"first"}}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := documentText(t, report); !strings.Contains(text, "inside ]] text|first") {
+		t.Fatalf("scanner output = %q", text)
+	}
+}
+
+func TestPartScopesAreIndependent(t *testing.T) {
+	template := testDOCX(t, map[string][]byte{
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[#let local = 'document']]</w:t></w:r></w:p><w:p><w:r><w:t>[[local]]</w:t></w:r></w:p>`)),
+		"word/header1.xml":  []byte(`<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>[[local]]</w:t></w:r></w:p></w:hdr>`),
 	})
-	if _, err := CreateReport(context.Background(), queryTemplate, nil, Options{}); err == nil || !strings.Contains(err.Error(), "no QueryResolver") {
-		t.Fatalf("missing resolver error = %v", err)
+	if _, err := CreateReport(context.Background(), template, nil, Options{}); err == nil || !strings.Contains(err.Error(), "local") {
+		t.Fatalf("part-local value leaked: %v", err)
+	}
+}
+
+func TestLoopParentAndAggregateEvaluationBudget(t *testing.T) {
+	document := wordDocument(`<w:p><w:r><w:t>[[#each groups as group]]</w:t></w:r></w:p><w:p><w:r><w:t>[[#each group as item]]</w:t></w:r></w:p><w:p><w:r><w:t>[[loop.parent.number]].[[loop.number]]</w:t></w:r></w:p><w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p><w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p>`)
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
+	report, err := CreateReport(context.Background(), template, map[string]any{"groups": [][]int{{1, 2}, {3}}}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := documentText(t, report)
+	for _, want := range []string{"1.1", "1.2", "2.1"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("loop parent output %q is missing from %q", want, text)
+		}
 	}
 
-	multipleQueries := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[QUERY one]]</w:t></w:r></w:p><w:p><w:r><w:t>[[QUERY two]]</w:t></w:r></w:p>`)),
-	})
-	if _, err := CreateReport(context.Background(), multipleQueries, nil, Options{QueryResolver: func(context.Context, string) (any, error) {
-		return nil, nil
-	}}); err == nil || !strings.Contains(err.Error(), "more than one QUERY") {
-		t.Fatalf("multiple query error = %v", err)
-	}
-
-	resolverFailure := errors.New("resolver failure")
-	if _, err := CreateReport(context.Background(), queryTemplate, nil, Options{QueryResolver: func(context.Context, string) (any, error) {
-		return nil, resolverFailure
-	}}); !errors.Is(err, resolverFailure) {
-		t.Fatalf("resolver error = %v", err)
-	}
-
-	duplicateAlias := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[ALIAS value INS first]]</w:t></w:r></w:p><w:p><w:r><w:t>[[ALIAS value INS second]]</w:t></w:r></w:p>`)),
-	})
-	if _, err := Compile(duplicateAlias, Options{}); err == nil || !strings.Contains(err.Error(), "duplicate alias") {
-		t.Fatalf("duplicate alias error = %v", err)
-	}
-
-	unknownAlias := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[*missing]]</w:t></w:r></w:p>`)),
-	})
-	if _, err := Compile(unknownAlias, Options{}); err == nil || !strings.Contains(err.Error(), "unknown alias") {
-		t.Fatalf("unknown alias error = %v", err)
+	budgetTemplate := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[1]] [[2]]</w:t></w:r></w:p>`))})
+	if _, err := CreateReport(context.Background(), budgetTemplate, nil, Options{MaxEvaluationSteps: 1}); err == nil || !strings.Contains(err.Error(), "step limit") {
+		t.Fatalf("aggregate evaluation limit error = %v", err)
 	}
 }
 
 func TestImageFormatsAndValidation(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[IMAGE jpeg]]</w:t></w:r></w:p><w:p><w:r><w:t>[[IMAGE gif]]</w:t></w:r></w:p>`)),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@image jpeg]]</w:t></w:r></w:p><w:p><w:r><w:t>[[@image gif]]</w:t></w:r></w:p>`)),
 	})
 	report, err := CreateReport(context.Background(), template, map[string]any{
 		"jpeg": &Image{Data: []byte("synthetic-jpeg"), Extension: "jpeg", Width: 1, Height: 1},
@@ -116,7 +133,7 @@ func TestImageFormatsAndValidation(t *testing.T) {
 		{name: "invalid SVG fallback", value: Image{Data: []byte("<svg/>"), Extension: "svg", Width: 1, Height: 1, Thumbnail: &Image{Data: []byte("<svg/>"), Extension: "svg"}}},
 	}
 	single := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[IMAGE value]]</w:t></w:r></w:p>`)),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@image value]]</w:t></w:r></w:p>`)),
 	})
 	for _, test := range invalidCases {
 		t.Run(test.name, func(t *testing.T) {
@@ -129,7 +146,7 @@ func TestImageFormatsAndValidation(t *testing.T) {
 
 func TestLinkSchemesAndPointerValue(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[LINK link]]</w:t></w:r></w:p>`)),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[@link link]]</w:t></w:r></w:p>`)),
 	})
 	report, err := CreateReport(context.Background(), template, map[string]any{
 		"link": &Link{URL: "custom://resource/1", Tooltip: "Synthetic tooltip"},
@@ -147,14 +164,14 @@ func TestLinkSchemesAndPointerValue(t *testing.T) {
 func TestHTMLAndRawXMLPlacementRules(t *testing.T) {
 	headerTemplate := testDOCX(t, map[string][]byte{
 		"word/document.xml": []byte(wordDocument(`<w:p/>`)),
-		"word/header1.xml":  []byte(`<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>[[HTML html]]</w:t></w:r></w:p></w:hdr>`),
+		"word/header1.xml":  []byte(`<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>[[@html html]]</w:t></w:r></w:p></w:hdr>`),
 	})
 	if _, err := CreateReport(context.Background(), headerTemplate, map[string]any{"html": "<p>test</p>"}, Options{}); err == nil || !strings.Contains(err.Error(), "only in word/document.xml") {
 		t.Fatalf("header HTML error = %v", err)
 	}
 
 	inlineRawXML := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>prefix [[RAW-XML xml]] suffix</w:t></w:r></w:p>`)),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>prefix [[@raw-xml xml]] suffix</w:t></w:r></w:p>`)),
 	})
 	if _, err := CreateReport(context.Background(), inlineRawXML, map[string]any{"xml": "<w:tab/>"}, Options{AllowRawXML: true}); err == nil || !strings.Contains(err.Error(), "must occupy its own paragraph") {
 		t.Fatalf("inline RAW-XML error = %v", err)
@@ -190,6 +207,9 @@ func TestPublicAPIGuardsAndDefaults(t *testing.T) {
 	})
 	if _, err := Compile(template, Options{OpenDelimiter: "%%", CloseDelimiter: "%%"}); err == nil {
 		t.Fatal("Compile accepted equal delimiters")
+	}
+	if _, err := Compile(template, Options{LanguageVersion: "legacy"}); err == nil || !strings.Contains(err.Error(), "only v1") {
+		t.Fatalf("legacy language version error = %v", err)
 	}
 	compiled, err := Compile(template, Options{CompressionLevel: 99})
 	if err != nil {

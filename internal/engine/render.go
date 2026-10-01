@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/nawafinity/go-namat/internal/expr"
+	valuetype "github.com/nawafinity/go-namat/internal/value"
 )
 
 type renderState struct {
@@ -14,6 +14,7 @@ type renderState struct {
 	template  *Template
 	rootData  any
 	variables map[string]any
+	declared  map[string]struct{}
 	functions map[string]expr.Function
 	counter   *renderCounter
 	pkg       *docxPackage
@@ -21,8 +22,9 @@ type renderState struct {
 }
 
 type renderCounter struct {
-	iterations int
-	resources  int
+	iterations      int
+	resources       int
+	evaluationSteps int
 }
 
 type textReplacement struct {
@@ -40,11 +42,21 @@ func (s *renderState) child() *renderState {
 		template:  s.template,
 		rootData:  s.rootData,
 		variables: variables,
+		declared:  make(map[string]struct{}),
 		functions: s.functions,
 		counter:   s.counter,
 		pkg:       s.pkg,
 		partName:  s.partName,
 	}
+}
+
+func (s *renderState) declare(name string, value any) error {
+	if _, exists := s.declared[name]; exists {
+		return fmt.Errorf("variable %q is already declared in this scope", name)
+	}
+	s.declared[name] = struct{}{}
+	s.variables[name] = value
+	return nil
 }
 
 func (s *renderState) processNode(node *xmlNode) error {
@@ -73,37 +85,47 @@ func (s *renderState) processSequence(children []*xmlNode) ([]*xmlNode, error) {
 			return nil, err
 		}
 		if standalone {
-			resolved, resolveErr := s.template.resolveCommand(blockCommand)
-			if resolveErr != nil {
-				return nil, s.commandError(blockCommand, resolveErr)
-			}
-			switch resolved.Type {
+			switch blockCommand.Type {
+			case CommandLet:
+				value, evalErr := s.evaluate(blockCommand.Expression)
+				if evalErr != nil {
+					return nil, s.commandError(blockCommand, evalErr)
+				}
+				if declareErr := s.declare(blockCommand.Variable, value); declareErr != nil {
+					return nil, s.commandError(blockCommand, declareErr)
+				}
+				index++
+				continue
 			case CommandHTML:
 				if s.partName != "word/document.xml" {
-					return nil, s.commandError(resolved, fmt.Errorf("HTML altChunk is supported only in word/document.xml"))
+					return nil, s.commandError(blockCommand, fmt.Errorf("@html is supported only in word/document.xml"))
 				}
-				value, evalErr := s.evaluate(resolved.Expression)
+				value, evalErr := s.evaluate(blockCommand.Expression)
 				if evalErr != nil {
-					return nil, s.commandError(resolved, evalErr)
+					return nil, s.commandError(blockCommand, evalErr)
 				}
 				node, nodeErr := s.htmlNode(value)
 				if nodeErr != nil {
-					return nil, s.commandError(resolved, nodeErr)
+					return nil, s.commandError(blockCommand, nodeErr)
 				}
 				result = append(result, node)
 				index++
 				continue
 			case CommandRawXML:
 				if !s.template.options.AllowRawXML {
-					return nil, s.commandError(resolved, fmt.Errorf("RAW-XML is disabled; set AllowRawXML to enable it"))
+					return nil, s.commandError(blockCommand, fmt.Errorf("@raw-xml is disabled; set AllowRawXML to enable it"))
 				}
-				value, evalErr := s.evaluate(resolved.Expression)
+				value, evalErr := s.evaluate(blockCommand.Expression)
 				if evalErr != nil {
-					return nil, s.commandError(resolved, evalErr)
+					return nil, s.commandError(blockCommand, evalErr)
 				}
-				nodes, parseErr := parseXMLFragment(formatValue(value))
+				rawXML, formatErr := expr.Format(value)
+				if formatErr != nil {
+					return nil, s.commandError(blockCommand, fmt.Errorf("@raw-xml value: %w", formatErr))
+				}
+				nodes, parseErr := parseXMLFragment(rawXML)
 				if parseErr != nil {
-					return nil, s.commandError(resolved, parseErr)
+					return nil, s.commandError(blockCommand, parseErr)
 				}
 				result = append(result, nodes...)
 				index++
@@ -115,7 +137,7 @@ func (s *renderState) processSequence(children []*xmlNode) ([]*xmlNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !structural || (command.Type != CommandIf && command.Type != CommandFor) {
+		if !structural || (command.Type != CommandIf && command.Type != CommandEach) {
 			child := children[index]
 			if err := s.processNode(child); err != nil {
 				return nil, err
@@ -136,7 +158,11 @@ func (s *renderState) processSequence(children []*xmlNode) ([]*xmlNode, error) {
 				return nil, s.commandError(command, err)
 			}
 			start, stop := index+1, end
-			if expressionTruthy(value) {
+			condition, ok := expr.AsBool(value)
+			if !ok {
+				return nil, s.commandError(command, fmt.Errorf("#if condition must be bool, got %T", value))
+			}
+			if condition {
 				if elseIndex >= 0 {
 					stop = elseIndex
 				}
@@ -146,12 +172,12 @@ func (s *renderState) processSequence(children []*xmlNode) ([]*xmlNode, error) {
 				start = end
 			}
 			segment := cloneNodes(children[start:stop])
-			processed, err := s.processSequence(segment)
+			processed, err := s.child().processSequence(segment)
 			if err != nil {
 				return nil, err
 			}
 			result = append(result, processed...)
-		case CommandFor:
+		case CommandEach:
 			value, err := s.evaluate(command.Expression)
 			if err != nil {
 				return nil, s.commandError(command, err)
@@ -166,8 +192,20 @@ func (s *renderState) processSequence(children []*xmlNode) ([]*xmlNode, error) {
 					return nil, fmt.Errorf("%w: maximum loop iterations exceeded (%d)", ErrSecurityLimit, s.template.options.MaxIterations)
 				}
 				childState := s.child()
-				childState.variables[command.Variable] = item
-				childState.variables["$idx"] = itemIndex
+				parentLoop, _ := s.variables["loop"]
+				loop := map[string]any{
+					"index":  int64(itemIndex),
+					"number": int64(itemIndex + 1),
+					"first":  itemIndex == 0,
+					"last":   itemIndex == len(items)-1,
+					"parent": parentLoop,
+				}
+				if err := childState.declare(command.Variable, item); err != nil {
+					return nil, s.commandError(command, err)
+				}
+				if err := childState.declare("loop", loop); err != nil {
+					return nil, s.commandError(command, err)
+				}
 				segment := cloneNodes(children[index+1 : end])
 				processed, err := childState.processSequence(segment)
 				if err != nil {
@@ -198,7 +236,7 @@ func findStructuralEnd(children []*xmlNode, start int, kind CommandType, options
 		case CommandElse:
 			if kind == CommandIf && depth == 0 {
 				if elseIndex >= 0 {
-					return 0, -1, fmt.Errorf("IF block contains more than one ELSE")
+					return 0, -1, fmt.Errorf("#if block contains more than one #else")
 				}
 				elseIndex = index
 			}
@@ -216,12 +254,12 @@ func matchingEnd(kind CommandType) CommandType {
 	if kind == CommandIf {
 		return CommandEndIf
 	}
-	return CommandEndFor
+	return CommandEndEach
 }
 
 func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 	text := textOfParagraph(paragraph)
-	spans, err := commandSpans(text, s.template.options)
+	spans, err := paragraphCommandSpans(paragraph, text, s.template.options)
 	if err != nil {
 		return err
 	}
@@ -230,23 +268,9 @@ func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 	}
 	actions := make([]paragraphAction, 0, len(spans))
 	for _, span := range spans {
-		command, err := s.template.resolveCommand(span.Command)
-		if err != nil {
-			return s.commandError(span.Command, err)
-		}
+		command := span.Command
 		var value any
 		switch command.Type {
-		case CommandExec, CommandSet:
-			name, expression, err := parseAssignment(command.Expression)
-			if err != nil {
-				return s.commandError(command, err)
-			}
-			value, err = s.evaluate(expression)
-			if err != nil {
-				return s.commandError(command, err)
-			}
-			s.variables[name] = value
-			value = ""
 		case CommandInsert:
 			value, err = s.evaluate(command.Expression)
 			if err != nil {
@@ -258,8 +282,8 @@ func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 					return s.commandError(command, err)
 				}
 			}
-			if value == nil && s.template.options.RejectNullish {
-				nullErr := fmt.Errorf("%w: expression returned null", ErrNullishResult)
+			if kind := expr.KindOf(value); kind == valuetype.Missing || kind == valuetype.Null {
+				nullErr := fmt.Errorf("%w: expression returned %s; use default", ErrNullishResult, kind)
 				if s.template.options.ErrorHandler == nil {
 					return s.commandError(command, nullErr)
 				}
@@ -268,8 +292,8 @@ func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 					return s.commandError(command, err)
 				}
 			}
-			if isObjectResult(value) && !s.template.options.AllowObjectResults {
-				objectErr := fmt.Errorf("%w: INS returned %T", ErrObjectResult, value)
+			if isObjectResult(value) {
+				objectErr := fmt.Errorf("%w: insertion returned %T", ErrObjectResult, value)
 				if s.template.options.ErrorHandler == nil {
 					return s.commandError(command, objectErr)
 				}
@@ -278,11 +302,12 @@ func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 					return s.commandError(command, err)
 				}
 			}
-			formatted := formatValue(value)
+			formatted, formatErr := expr.Format(value)
+			if formatErr != nil {
+				return s.commandError(command, formatErr)
+			}
 			actions = append(actions, paragraphAction{start: span.Start, end: span.End, text: &formatted})
 			continue
-		case CommandAlias, CommandQuery:
-			value = ""
 		case CommandImage:
 			value, err = s.evaluate(command.Expression)
 			if err != nil {
@@ -307,15 +332,13 @@ func (s *renderState) renderParagraph(paragraph *xmlNode) error {
 			continue
 		case CommandHTML, CommandRawXML:
 			return s.commandError(command, fmt.Errorf("%s must occupy its own paragraph", command.Type))
-		case CommandIf, CommandElse, CommandEndIf, CommandFor, CommandEndFor:
+		case CommandLet, CommandIf, CommandElse, CommandEndIf, CommandEach, CommandEndEach:
 			// Structural commands are removed by sequence processing. Reaching this
-			// path means the marker is inline, which will be supported separately.
-			return s.commandError(command, fmt.Errorf("inline structural commands are not supported yet"))
+			// path means a directive was placed inline.
+			return s.commandError(command, fmt.Errorf("%s must occupy its own paragraph or table row", command.Type))
 		default:
 			return s.commandError(command, fmt.Errorf("unsupported command type %s", command.Type))
 		}
-		formatted := formatValue(value)
-		actions = append(actions, paragraphAction{start: span.Start, end: span.End, text: &formatted})
 	}
 	return finalizeParagraph(paragraph, actions, s.template.options)
 }
@@ -354,7 +377,7 @@ func (s *renderState) evaluate(source string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	value, err := program.Eval(&expr.Context{Root: s.rootData, Variables: s.variables, Functions: s.functions})
+	value, err := program.Eval(&expr.Context{Context: s.ctx, Root: s.rootData, Variables: s.variables, Functions: s.functions, MaxSteps: s.template.options.MaxEvaluationSteps, SharedSteps: &s.counter.evaluationSteps})
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +388,7 @@ func (s *renderState) evaluate(source string) (any, error) {
 }
 
 func (s *renderState) commandError(command Command, err error) error {
-	return &Error{Command: command.Raw, Err: fmt.Errorf("%w: %w", ErrCommandExecution, err)}
+	return &Error{Command: command.Raw, Paragraph: command.Location.Paragraph, CommandIndex: command.Location.Ordinal, Start: command.Location.Start, End: command.Location.End, Err: fmt.Errorf("%w: %w", ErrCommandExecution, err)}
 }
 
 func isObjectResult(value any) bool {
@@ -457,26 +480,6 @@ func iterable(value any) ([]any, error) {
 		}
 		return items, nil
 	default:
-		return nil, fmt.Errorf("FOR expects an array or slice, got %T", value)
-	}
-}
-
-func expressionTruthy(value any) bool {
-	if value == nil {
-		return false
-	}
-	switch v := value.(type) {
-	case bool:
-		return v
-	case string:
-		return strings.TrimSpace(v) != ""
-	case float64:
-		return v != 0
-	case float32:
-		return v != 0
-	case int:
-		return v != 0
-	default:
-		return true
+		return nil, fmt.Errorf("#each expects an array or slice, got %T", value)
 	}
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func benchmarkFixture(b testing.TB) ([]byte, map[string]any) {
-	document := wordDocument(`<w:p><w:r><w:t>[[title]]</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>[[FOR row IN rows]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[$idx + 1]] [[$row.name]] [[$row.value]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[END-FOR]]</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[title]]</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>[[#each rows as row]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[loop.index + 1]] [[row.name]] [[row.value]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`)
 	rows := make([]map[string]any, 100)
 	for index := range rows {
 		rows[index] = map[string]any{"name": fmt.Sprintf("row-%d", index), "value": index * 10}

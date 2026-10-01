@@ -2,7 +2,6 @@ package expr
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,7 +12,7 @@ type lexer struct {
 	pos    int
 }
 
-func lex(source string) ([]token, error) {
+func lex(source string, maxTokens int) ([]token, error) {
 	l := lexer{source: source}
 	var tokens []token
 	for {
@@ -22,6 +21,9 @@ func lex(source string) ([]token, error) {
 			return nil, err
 		}
 		tokens = append(tokens, tok)
+		if maxTokens > 0 && len(tokens) > maxTokens {
+			return nil, fmt.Errorf("namat expression: token limit exceeded (%d)", maxTokens)
+		}
 		if tok.kind == tokenEOF {
 			return tokens, nil
 		}
@@ -31,7 +33,7 @@ func lex(source string) ([]token, error) {
 func (l *lexer) next() (token, error) {
 	l.skipSpace()
 	if l.pos >= len(l.source) {
-		return token{kind: tokenEOF, pos: l.pos}, nil
+		return token{kind: tokenEOF, pos: l.pos, end: l.pos}, nil
 	}
 	start := l.pos
 	r, size := utf8.DecodeRuneInString(l.source[l.pos:])
@@ -44,7 +46,7 @@ func (l *lexer) next() (token, error) {
 			}
 			l.pos += size
 		}
-		return token{kind: tokenIdentifier, text: l.source[start:l.pos], pos: start}, nil
+		return token{kind: tokenIdentifier, text: l.source[start:l.pos], pos: start, end: l.pos}, nil
 	}
 	if unicode.IsDigit(r) {
 		return l.number()
@@ -52,38 +54,36 @@ func (l *lexer) next() (token, error) {
 	switch r {
 	case '\'', '"':
 		return l.quoted(byte(r), tokenString)
-	case '`':
-		return l.quoted('`', tokenTemplate)
 	case '(':
 		l.pos += size
-		return token{kind: tokenLParen, text: "(", pos: start}, nil
+		return token{kind: tokenLParen, text: "(", pos: start, end: l.pos}, nil
 	case ')':
 		l.pos += size
-		return token{kind: tokenRParen, text: ")", pos: start}, nil
+		return token{kind: tokenRParen, text: ")", pos: start, end: l.pos}, nil
 	case '[':
 		l.pos += size
-		return token{kind: tokenLBracket, text: "[", pos: start}, nil
+		return token{kind: tokenLBracket, text: "[", pos: start, end: l.pos}, nil
 	case ']':
 		l.pos += size
-		return token{kind: tokenRBracket, text: "]", pos: start}, nil
+		return token{kind: tokenRBracket, text: "]", pos: start, end: l.pos}, nil
 	case ',':
 		l.pos += size
-		return token{kind: tokenComma, text: ",", pos: start}, nil
+		return token{kind: tokenComma, text: ",", pos: start, end: l.pos}, nil
 	case '{':
 		l.pos += size
-		return token{kind: tokenLBrace, text: "{", pos: start}, nil
+		return token{kind: tokenLBrace, text: "{", pos: start, end: l.pos}, nil
 	case '}':
 		l.pos += size
-		return token{kind: tokenRBrace, text: "}", pos: start}, nil
+		return token{kind: tokenRBrace, text: "}", pos: start, end: l.pos}, nil
 	case ':':
 		l.pos += size
-		return token{kind: tokenColon, text: ":", pos: start}, nil
+		return token{kind: tokenColon, text: ":", pos: start, end: l.pos}, nil
 	case '.':
 		l.pos += size
-		return token{kind: tokenDot, text: ".", pos: start}, nil
+		return token{kind: tokenDot, text: ".", pos: start, end: l.pos}, nil
 	}
 
-	operators := []string{"===", "!==", "?.", "??", "||", "&&", "==", "!=", ">=", "<=", "+", "-", "*", "/", "%", "!", ">", "<"}
+	operators := []string{"?.", "??", "||", "&&", "==", "!=", ">=", "<=", "+", "-", "*", "/", "%", "!", ">", "<"}
 	remaining := l.source[l.pos:]
 	for _, op := range operators {
 		if strings.HasPrefix(remaining, op) {
@@ -92,12 +92,12 @@ func (l *lexer) next() (token, error) {
 			if op == "?." {
 				kind = tokenOptionalDot
 			}
-			return token{kind: kind, text: op, pos: start}, nil
+			return token{kind: kind, text: op, pos: start, end: l.pos}, nil
 		}
 	}
-	if r == '?' {
+	if r == '|' {
 		l.pos += size
-		return token{kind: tokenQuestion, text: "?", pos: start}, nil
+		return token{kind: tokenPipe, text: "|", pos: start, end: l.pos}, nil
 	}
 	return token{}, fmt.Errorf("namat expression: unexpected character %q at byte %d", r, start)
 }
@@ -119,10 +119,10 @@ func (l *lexer) number() (token, error) {
 		break
 	}
 	text := l.source[start:l.pos]
-	if _, err := strconv.ParseFloat(text, 64); err != nil {
+	if text == "." || strings.HasSuffix(text, ".") {
 		return token{}, fmt.Errorf("namat expression: invalid number %q at byte %d", text, start)
 	}
-	return token{kind: tokenNumber, text: text, pos: start}, nil
+	return token{kind: tokenNumber, text: text, pos: start, end: l.pos}, nil
 }
 
 func (l *lexer) quoted(quote byte, kind tokenKind) (token, error) {
@@ -133,7 +133,7 @@ func (l *lexer) quoted(quote byte, kind tokenKind) (token, error) {
 		ch := l.source[l.pos]
 		l.pos++
 		if ch == quote {
-			return token{kind: kind, text: b.String(), pos: start}, nil
+			return token{kind: kind, text: b.String(), pos: start, end: l.pos}, nil
 		}
 		if ch == '\\' {
 			if l.pos >= len(l.source) {
@@ -172,7 +172,7 @@ func (l *lexer) skipSpace() {
 }
 
 func isIdentifierStart(r rune) bool {
-	return r == '_' || r == '$' || unicode.IsLetter(r)
+	return r == '_' || unicode.IsLetter(r)
 }
 
 func isIdentifierContinue(r rune) bool {

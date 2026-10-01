@@ -7,15 +7,17 @@ import (
 	"testing"
 
 	"github.com/nawafinity/go-namat/internal/expr"
+	"github.com/nawafinity/go-namat/internal/value"
 )
 
 func renderTestState(options Options, data any) *renderState {
 	options = options.normalized()
 	return &renderState{
 		ctx:       context.Background(),
-		template:  &Template{options: options, aliases: map[string]Command{}},
+		template:  &Template{options: options},
 		rootData:  data,
 		variables: map[string]any{},
+		declared:  map[string]struct{}{},
 		functions: options.expressionFunctions(),
 		counter:   &renderCounter{},
 		pkg:       richTestState().pkg,
@@ -42,17 +44,13 @@ func TestRenderSequenceCancellationAndStandaloneFailures(t *testing.T) {
 		paragraph *xmlNode
 		configure func(*renderState)
 	}{
-		{"standalone parse error", commandParagraph(t, "[[ELSE extra]]"), nil},
-		{"unknown alias", commandParagraph(t, "[[*missing]]"), nil},
-		{"HTML wrong part", commandParagraph(t, "[[HTML value]]"), func(s *renderState) { s.partName = "word/header1.xml" }},
-		{"HTML evaluation", commandParagraph(t, "[[HTML missing]]"), nil},
-		{"HTML empty", commandParagraph(t, "[[HTML value]]"), func(s *renderState) {
-			s.rootData = map[string]any{"value": ""}
-			s.template.options.RejectNullish = true
-		}},
-		{"RAW disabled", commandParagraph(t, "[[RAW-XML value]]"), nil},
-		{"RAW evaluation", commandParagraph(t, "[[RAW-XML missing]]"), func(s *renderState) { s.template.options.AllowRawXML = true }},
-		{"RAW malformed", commandParagraph(t, "[[RAW-XML value]]"), func(s *renderState) {
+		{"standalone parse error", commandParagraph(t, "[[#else extra]]"), nil},
+		{"invalid expression", commandParagraph(t, "[[*missing]]"), nil},
+		{"HTML wrong part", commandParagraph(t, "[[@html value]]"), func(s *renderState) { s.partName = "word/header1.xml" }},
+		{"HTML evaluation", commandParagraph(t, "[[@html missing]]"), nil},
+		{"RAW disabled", commandParagraph(t, "[[@raw-xml value]]"), nil},
+		{"RAW evaluation", commandParagraph(t, "[[@raw-xml missing]]"), func(s *renderState) { s.template.options.AllowRawXML = true }},
+		{"RAW malformed", commandParagraph(t, "[[@raw-xml value]]"), func(s *renderState) {
 			s.template.options.AllowRawXML = true
 			s.rootData = map[string]any{"value": "<broken>"}
 		}},
@@ -85,14 +83,14 @@ func TestStructuralSequenceFailureBranches(t *testing.T) {
 		max       int
 		configure func(*renderState)
 	}{
-		{"structural parse", paragraphs("[[IF true]]", "[[ELSE extra]]", "[[END-IF]]"), nil, 10, nil},
-		{"IF missing end", paragraphs("[[IF true]]"), nil, 10, nil},
-		{"IF duplicate else", paragraphs("[[IF true]]", "[[ELSE]]", "[[ELSE]]", "[[END-IF]]"), nil, 10, nil},
-		{"IF evaluation", paragraphs("[[IF missing]]", "[[END-IF]]"), nil, 10, nil},
-		{"FOR evaluation", paragraphs("[[FOR item IN missing]]", "[[END-FOR]]"), nil, 10, nil},
-		{"FOR non-iterable", paragraphs("[[FOR item IN value]]", "[[END-FOR]]"), map[string]any{"value": 1}, 10, nil},
-		{"FOR limit", paragraphs("[[FOR item IN value]]", "[[END-FOR]]"), map[string]any{"value": []int{1, 2}}, 1, nil},
-		{"nested processing", paragraphs("[[IF true]]", "[[INS missing]]", "[[END-IF]]"), nil, 10, nil},
+		{"structural parse", paragraphs("[[#if true]]", "[[#else extra]]", "[[/if]]"), nil, 10, nil},
+		{"IF missing end", paragraphs("[[#if true]]"), nil, 10, nil},
+		{"IF duplicate else", paragraphs("[[#if true]]", "[[#else]]", "[[#else]]", "[[/if]]"), nil, 10, nil},
+		{"IF evaluation", paragraphs("[[#if missing]]", "[[/if]]"), nil, 10, nil},
+		{"FOR evaluation", paragraphs("[[#each missing as item]]", "[[/each]]"), nil, 10, nil},
+		{"FOR non-iterable", paragraphs("[[#each value as item]]", "[[/each]]"), map[string]any{"value": 1}, 10, nil},
+		{"FOR limit", paragraphs("[[#each value as item]]", "[[/each]]"), map[string]any{"value": []int{1, 2}}, 1, nil},
+		{"nested processing", paragraphs("[[#if true]]", "[[missing]]", "[[/if]]"), nil, 10, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			state := renderTestState(Options{MaxIterations: test.max}, test.data)
@@ -106,20 +104,20 @@ func TestStructuralSequenceFailureBranches(t *testing.T) {
 	}
 
 	state := renderTestState(Options{}, nil)
-	falseWithoutElse, err := state.processSequence(paragraphs("[[IF false]]", "hidden", "[[END-IF]]"))
+	falseWithoutElse, err := state.processSequence(paragraphs("[[#if false]]", "hidden", "[[/if]]"))
 	if err != nil || len(falseWithoutElse) != 0 {
 		t.Fatalf("false IF = %d nodes, %v", len(falseWithoutElse), err)
 	}
-	falseWithElse, err := state.processSequence(paragraphs("[[IF false]]", "hidden", "[[ELSE]]", "visible", "[[END-IF]]"))
+	falseWithElse, err := state.processSequence(paragraphs("[[#if false]]", "hidden", "[[#else]]", "visible", "[[/if]]"))
 	if err != nil || len(falseWithElse) != 1 {
 		t.Fatalf("false IF with ELSE = %d nodes, %v", len(falseWithElse), err)
 	}
 
-	row := mustParseElement(t, "<w:tr><w:tc><w:p><w:r><w:t>[[IF true]]</w:t></w:r></w:p><w:p><w:r><w:t>[[FOR item IN items]]</w:t></w:r></w:p></w:tc></w:tr>")
+	row := mustParseElement(t, "<w:tr><w:tc><w:p><w:r><w:t>[[#if true]]</w:t></w:r></w:p><w:p><w:r><w:t>[[#each items as item]]</w:t></w:r></w:p></w:tc></w:tr>")
 	if _, err := state.processSequence([]*xmlNode{row}); err == nil {
 		t.Fatal("multiple structural commands in one row succeeded")
 	}
-	loopWithBadBody := paragraphs("[[FOR item IN items]]", "[[INS missing]]", "[[END-FOR]]")
+	loopWithBadBody := paragraphs("[[#each items as item]]", "[[missing]]", "[[/each]]")
 	state = renderTestState(Options{}, map[string]any{"items": []int{1}})
 	if _, err := state.processSequence(loopWithBadBody); err == nil {
 		t.Fatal("loop child failure was not propagated")
@@ -129,16 +127,16 @@ func TestStructuralSequenceFailureBranches(t *testing.T) {
 func TestFindStructuralEndEdges(t *testing.T) {
 	options := Options{}.normalized()
 	children := []*xmlNode{
-		commandParagraph(t, "[[IF true]]"),
-		commandParagraph(t, "[[IF true]]"),
-		commandParagraph(t, "[[END-IF]]"),
-		commandParagraph(t, "[[END-IF]]"),
+		commandParagraph(t, "[[#if true]]"),
+		commandParagraph(t, "[[#if true]]"),
+		commandParagraph(t, "[[/if]]"),
+		commandParagraph(t, "[[/if]]"),
 	}
 	end, elseIndex, err := findStructuralEnd(children, 0, CommandIf, options)
 	if err != nil || end != 3 || elseIndex != -1 {
 		t.Fatalf("nested structural end = %d, %d, %v", end, elseIndex, err)
 	}
-	bad := []*xmlNode{commandParagraph(t, "[[IF true]]"), commandParagraph(t, "[[ELSE extra]]")}
+	bad := []*xmlNode{commandParagraph(t, "[[#if true]]"), commandParagraph(t, "[[#else extra]]")}
 	if _, _, err := findStructuralEnd(bad, 0, CommandIf, options); err == nil {
 		t.Fatal("malformed structural command succeeded")
 	}
@@ -153,25 +151,22 @@ func TestRenderParagraphFailureAndRecoveryEdges(t *testing.T) {
 		options   Options
 		configure func(*renderState)
 	}{
-		{"span error", "[[ELSE extra]]", nil, Options{}, nil},
-		{"alias error", "[[*missing]]", nil, Options{}, nil},
-		{"assignment syntax", "[[SET invalid]]", nil, Options{}, nil},
-		{"assignment evaluation", "[[SET value = missing]]", nil, Options{}, nil},
-		{"insert evaluation", "[[INS missing]]", nil, Options{}, nil},
-		{"handler failure", "[[INS missing]]", nil, Options{ErrorHandler: func(string, error) (any, error) { return nil, wantErr }}, nil},
-		{"null rejected", "[[INS value]]", map[string]any{"value": nil}, Options{RejectNullish: true}, nil},
-		{"null handler failure", "[[INS value]]", map[string]any{"value": nil}, Options{RejectNullish: true, ErrorHandler: func(string, error) (any, error) { return nil, wantErr }}, nil},
-		{"object rejected", "[[INS value]]", map[string]any{"value": map[string]any{}}, Options{}, nil},
-		{"object handler failure", "[[INS value]]", map[string]any{"value": map[string]any{}}, Options{ErrorHandler: func(string, error) (any, error) { return nil, wantErr }}, nil},
-		{"image evaluation", "[[IMAGE missing]]", nil, Options{}, nil},
-		{"image materialization", "[[IMAGE value]]", map[string]any{"value": 1}, Options{}, nil},
-		{"link evaluation", "[[LINK missing]]", nil, Options{}, nil},
-		{"link materialization", "[[LINK value]]", map[string]any{"value": Link{URL: "relative"}}, Options{}, nil},
-		{"inline HTML", "prefix [[HTML value]]", map[string]any{"value": "x"}, Options{}, nil},
-		{"inline structural", "prefix [[IF true]]", nil, Options{}, nil},
-		{"unsupported alias target", "[[*custom]]", nil, Options{}, func(s *renderState) {
-			s.template.aliases["custom"] = Command{Type: CommandType("CUSTOM"), Raw: "CUSTOM"}
-		}},
+		{"span error", "[[#else extra]]", nil, Options{}, nil},
+		{"invalid expression", "[[*missing]]", nil, Options{}, nil},
+		{"assignment syntax", "[[#let invalid]]", nil, Options{}, nil},
+		{"assignment evaluation", "[[#let value = missing]]", nil, Options{}, nil},
+		{"insert evaluation", "[[missing]]", nil, Options{}, nil},
+		{"handler failure", "[[missing]]", nil, Options{ErrorHandler: func(string, error) (any, error) { return nil, wantErr }}, nil},
+		{"null rejected", "[[value]]", map[string]any{"value": nil}, Options{}, nil},
+		{"null handler failure", "[[value]]", map[string]any{"value": nil}, Options{ErrorHandler: func(string, error) (any, error) { return nil, wantErr }}, nil},
+		{"object rejected", "[[value]]", map[string]any{"value": map[string]any{}}, Options{}, nil},
+		{"object handler failure", "[[value]]", map[string]any{"value": map[string]any{}}, Options{ErrorHandler: func(string, error) (any, error) { return nil, wantErr }}, nil},
+		{"image evaluation", "[[@image missing]]", nil, Options{}, nil},
+		{"image materialization", "[[@image value]]", map[string]any{"value": 1}, Options{}, nil},
+		{"link evaluation", "[[@link missing]]", nil, Options{}, nil},
+		{"link materialization", "[[@link value]]", map[string]any{"value": Link{URL: "relative"}}, Options{}, nil},
+		{"inline HTML", "prefix [[@html value]]", map[string]any{"value": "x"}, Options{}, nil},
+		{"inline structural", "prefix [[#if true]]", nil, Options{}, nil},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -192,14 +187,14 @@ func TestRenderParagraphFailureAndRecoveryEdges(t *testing.T) {
 		want    string
 	}{
 		{"evaluation recovery", nil, Options{ErrorHandler: func(string, error) (any, error) { return "fallback", nil }}, "fallback"},
-		{"null recovery", nil, Options{RejectNullish: true, ErrorHandler: func(string, error) (any, error) { return "null", nil }}, "null"},
+		{"null recovery", nil, Options{ErrorHandler: func(string, error) (any, error) { return "null", nil }}, "null"},
 		{"object recovery", map[string]any{}, Options{ErrorHandler: func(string, error) (any, error) { return "object", nil }}, "object"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			state := renderTestState(test.options, map[string]any{"value": test.value})
-			command := "[[INS value]]"
+			command := "[[value]]"
 			if test.name == "evaluation recovery" {
-				command = "[[INS missing]]"
+				command = "[[missing]]"
 			}
 			paragraph := commandParagraph(t, command)
 			if err := state.renderParagraph(paragraph); err != nil || textOfParagraph(paragraph) != test.want {
@@ -209,8 +204,8 @@ func TestRenderParagraphFailureAndRecoveryEdges(t *testing.T) {
 	}
 
 	state := renderTestState(Options{}, map[string]any{"value": 2})
-	paragraph := commandParagraph(t, "[[SET variable = value]]")
-	if err := state.renderParagraph(paragraph); err != nil || state.variables["variable"] != 2 {
+	paragraph := commandParagraph(t, "[[#let variable = value]]")
+	if _, err := state.processSequence([]*xmlNode{paragraph}); err != nil || state.variables["variable"] != 2 {
 		t.Fatalf("SET result = %#v, %v", state.variables, err)
 	}
 	plain := commandParagraph(t, "plain")
@@ -229,11 +224,11 @@ func TestEvaluateCancellationEdges(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	state = renderTestState(Options{Functions: map[string]Function{
-		"cancel": func(...any) (any, error) {
+	state = renderTestState(Options{Functions: map[string]FunctionSpec{
+		"cancel": {Returns: value.Bool, Call: func(context.Context, ...any) (any, error) {
 			cancel()
 			return true, nil
-		},
+		}},
 	}}, nil)
 	state.ctx = ctx
 	if _, err := state.evaluate("cancel()"); !errors.Is(err, context.Canceled) {
@@ -317,13 +312,13 @@ func TestParagraphActionErrors(t *testing.T) {
 func TestRenderProcessNodePropagatesChildError(t *testing.T) {
 	state := renderTestState(Options{}, nil)
 	bad := elementNode("root")
-	bad.Children = append(bad.Children, commandParagraph(t, "[[INS missing]]"))
+	bad.Children = append(bad.Children, commandParagraph(t, "[[missing]]"))
 	if err := state.processNode(bad); err == nil {
 		t.Fatal("child render error was not propagated")
 	}
 
 	state = renderTestState(Options{}, nil)
-	state.functions["fail"] = expr.Function(func(...any) (any, error) { return nil, fmt.Errorf("failed") })
+	state.functions["fail"] = expr.Function{Signature: expr.Signature{Returns: value.Any}, Call: func(context.Context, ...any) (any, error) { return nil, fmt.Errorf("failed") }}
 	if _, err := state.evaluate("fail()"); err == nil {
 		t.Fatal("host function error was not propagated")
 	}

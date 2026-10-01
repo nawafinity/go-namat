@@ -10,7 +10,7 @@ import (
 func TestRenderInsertAcrossWordRuns(t *testing.T) {
 	document := wordDocument(`<w:p>
   <w:r><w:t xml:space="preserve">Hello </w:t></w:r>
-  <w:r><w:t>[[INS record.</w:t></w:r>
+  <w:r><w:t>[[record.</w:t></w:r>
   <w:r><w:t>name]]</w:t></w:r>
   <w:r><w:t>!</w:t></w:r>
 </w:p>`)
@@ -32,6 +32,41 @@ func TestRenderInsertAcrossWordRuns(t *testing.T) {
 	}
 	if got := readPart(t, report, "word/media/original.bin"); !bytes.Equal(got, []byte{0x00, 0x10, 0xfe, 0xff}) {
 		t.Fatalf("binary package part changed: %v", got)
+	}
+}
+
+func TestRenderWhenDelimiterCharactersAreSplitAcrossRunsAndParagraphs(t *testing.T) {
+	document := wordDocument(`
+<w:p><w:r><w:t>[</w:t></w:r><w:r><w:t>[record.</w:t></w:r><w:r><w:t>name]</w:t></w:r><w:r><w:t>]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[</w:t></w:r></w:p>
+<w:p><w:r><w:t>[record.name]</w:t></w:r></w:p>
+<w:p><w:r><w:t>]</w:t></w:r></w:p>`)
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
+	report, err := CreateReport(context.Background(), template, map[string]any{
+		"record": map[string]any{"name": "fragment-safe"},
+	}, Options{})
+	if err != nil {
+		t.Fatalf("CreateReport: %v", err)
+	}
+	text := documentText(t, report)
+	if strings.Count(text, "fragment-safe") != 2 || strings.Contains(text, "[[") || strings.Contains(text, "]]") {
+		t.Fatalf("unexpected rendered text: %q", text)
+	}
+}
+
+func TestStructuralIfRequiresBool(t *testing.T) {
+	document := wordDocument(`
+<w:p><w:r><w:t>[[#if zero]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>wrong</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#else]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>zero-is-false</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[/if]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#if blank]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>nonempty-is-true</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[/if]]</w:t></w:r></w:p>`)
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
+	if _, err := CreateReport(context.Background(), template, map[string]any{"zero": int64(0), "blank": " "}, Options{}); err == nil || !strings.Contains(err.Error(), "must be bool") {
+		t.Fatalf("non-boolean condition error = %v", err)
 	}
 }
 
@@ -58,7 +93,7 @@ func TestInsertKeepsCommandRunAtTextBoundary(t *testing.T) {
 
 func TestRenderCommandSplitAcrossParagraphs(t *testing.T) {
 	document := wordDocument(`
-<w:p><w:r><w:t>[[INS record.</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[record.</w:t></w:r></w:p>
 <w:p><w:r><w:t>name]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 
@@ -77,11 +112,11 @@ func TestRenderCommandSplitAcrossParagraphs(t *testing.T) {
 
 func TestRenderConditionalWithElse(t *testing.T) {
 	document := wordDocument(`
-<w:p><w:r><w:t>[[IF record.active]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#if record.active]]</w:t></w:r></w:p>
 <w:p><w:r><w:t>Available: [[record.name]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[ELSE]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#else]]</w:t></w:r></w:p>
 <w:p><w:r><w:t>Unavailable</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[END-IF]]</w:t></w:r></w:p>`)
+<w:p><w:r><w:t>[[/if]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 
 	report, err := CreateReport(context.Background(), template, map[string]any{
@@ -99,9 +134,9 @@ func TestRenderConditionalWithElse(t *testing.T) {
 
 func TestRenderLoopRepeatsTableRows(t *testing.T) {
 	document := wordDocument(`<w:tbl>
-<w:tr><w:tc><w:p><w:r><w:t>[[FOR record IN records]]</w:t></w:r></w:p></w:tc></w:tr>
-<w:tr><w:tc><w:p><w:r><w:t>[[$idx + 1]] - [[$record.name]]</w:t></w:r></w:p></w:tc></w:tr>
-<w:tr><w:tc><w:p><w:r><w:t>[[END-FOR record]]</w:t></w:r></w:p></w:tc></w:tr>
+<w:tr><w:tc><w:p><w:r><w:t>[[#each records as record]]</w:t></w:r></w:p></w:tc></w:tr>
+<w:tr><w:tc><w:p><w:r><w:t>[[loop.index + 1]] - [[record.name]]</w:t></w:r></w:p></w:tc></w:tr>
+<w:tr><w:tc><w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p></w:tc></w:tr>
 </w:tbl>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 
@@ -127,8 +162,8 @@ func TestRenderLoopRepeatsTableRows(t *testing.T) {
 
 func TestListCommandsIncludesHeaders(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[INS title]]</w:t></w:r></w:p>`)),
-		"word/header1.xml":  []byte(`<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>[[IF visible]]</w:t></w:r></w:p><w:p><w:r><w:t>[[END-IF]]</w:t></w:r></w:p></w:hdr>`),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[title]]</w:t></w:r></w:p>`)),
+		"word/header1.xml":  []byte(`<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>[[#if visible]]</w:t></w:r></w:p><w:p><w:r><w:t>[[/if]]</w:t></w:r></w:p></w:hdr>`),
 	})
 
 	commands, err := ListCommands(template, Options{})
@@ -145,7 +180,7 @@ func TestListCommandsIncludesHeaders(t *testing.T) {
 
 func TestCompileRejectsUnbalancedStructure(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[IF active]]</w:t></w:r></w:p>`)),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[#if active]]</w:t></w:r></w:p>`)),
 	})
 
 	_, err := Compile(template, Options{})
@@ -174,10 +209,10 @@ func TestDOCMRoundTripPreservesMacroProject(t *testing.T) {
 	}
 }
 
-func TestRejectsMismatchedEndForName(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[FOR item IN items]]</w:t></w:r></w:p><w:p><w:r><w:t>[[END-FOR other]]</w:t></w:r></w:p>`)
+func TestRejectsArgumentsOnEndEach(t *testing.T) {
+	document := wordDocument(`<w:p><w:r><w:t>[[#each items as item]]</w:t></w:r></w:p><w:p><w:r><w:t>[[/each item]]</w:t></w:r></w:p>`)
 	_, err := Compile(testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)}), Options{})
-	if err == nil || !strings.Contains(err.Error(), "does not match") {
-		t.Fatalf("error = %v, want mismatched loop variable", err)
+	if err == nil || !strings.Contains(err.Error(), "/each") {
+		t.Fatalf("error = %v, want closing directive argument error", err)
 	}
 }

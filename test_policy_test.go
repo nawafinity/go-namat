@@ -26,16 +26,36 @@ func TestPublicFacadeDelegatesToEngine(t *testing.T) {
 	_, _ = GetMetadata(nil)
 }
 
+func TestDecodeJSONPreservesExactNumbers(t *testing.T) {
+	decoded, err := DecodeJSON(strings.NewReader(`{"small":42,"large":9007199254740993,"unsigned":18446744073709551615,"amount":12.340}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	object := decoded.(map[string]any)
+	if object["small"] != int64(42) || object["large"] != int64(9007199254740993) || object["unsigned"] != uint64(18446744073709551615) {
+		t.Fatalf("integer types changed: %#v", object)
+	}
+	amount, ok := object["amount"].(Decimal)
+	if !ok || amount.String() != "12.34" {
+		t.Fatalf("decimal = %#v", object["amount"])
+	}
+	if _, err := DecodeJSON(strings.NewReader(`1 2`)); err == nil {
+		t.Fatal("multiple JSON values succeeded")
+	}
+	if _, err := DecodeJSON(nil); err == nil {
+		t.Fatal("nil JSON reader succeeded")
+	}
+}
+
 func TestPublicFacadeSuccessPaths(t *testing.T) {
 	document := facadeDOCX(t, map[string]string{
 		"word/document.xml": `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>[[upper(name)]]</w:t></w:r></w:p></w:body></w:document>`,
 		"docProps/core.xml": `<?xml version="1.0"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Facade fixture</dc:title></cp:coreProperties>`,
 	})
 	options := Options{
-		Functions: map[string]Function{
-			"upper": func(args ...any) (any, error) { return strings.ToUpper(fmt.Sprint(args[0])), nil },
+		Functions: map[string]FunctionSpec{
+			"upper": {Params: []ValueType{TypeAny}, Returns: TypeString, Call: func(_ context.Context, args ...any) (any, error) { return strings.ToUpper(fmt.Sprint(args[0])), nil }},
 		},
-		QueryResolver:      func(context.Context, string) (any, error) { return nil, nil },
 		ErrorHandler:       func(string, error) (any, error) { return nil, nil },
 		AllowedLinkSchemes: []string{"https"},
 	}
@@ -74,6 +94,17 @@ func TestPublicFacadeSuccessPaths(t *testing.T) {
 	metadata, err := GetMetadata(document)
 	if err != nil || metadata.Title != "Facade fixture" {
 		t.Fatalf("GetMetadata = %#v, %v", metadata, err)
+	}
+}
+
+func TestNilAndZeroTemplateRenderGuards(t *testing.T) {
+	for _, template := range []*Template{nil, {}} {
+		if _, err := template.Render(context.Background(), nil); !errors.Is(err, ErrInvalidTemplate) {
+			t.Fatalf("Render error = %v, want ErrInvalidTemplate", err)
+		}
+		if err := template.RenderTo(context.Background(), &bytes.Buffer{}, nil); !errors.Is(err, ErrInvalidTemplate) {
+			t.Fatalf("RenderTo error = %v, want ErrInvalidTemplate", err)
+		}
 	}
 }
 

@@ -1,0 +1,56 @@
+{
+  "title": "التقرير التنفيذي المتقدم",
+  "generated_at": "30 سبتمبر 2026",
+  "currency": "SAR",
+  "departments": [
+    {
+      "name": "التحول الرقمي",
+      "owner": "فريق المنصات",
+      "active": true,
+      "projects": [
+        {
+          "name": "منصة التقارير",
+          "url": "https://example.com/projects/reports",
+          "budget": 275000.5,
+          "status": "green",
+          "progress": [18, 35, 57, 76, 92],
+          "tasks": [
+            {"name": "تحليل المتطلبات", "state": "done", "hours": 84},
+            {"name": "محرك القوالب", "state": "done", "hours": 146.5},
+            {"name": "اختبارات التوافق", "state": "doing", "hours": 63}
+          ]
+        },
+        {
+          "name": "بوابة البيانات",
+          "url": "https://example.com/projects/data",
+          "budget": 180000,
+          "status": "amber",
+          "progress": [12, 28, 41, 48, 61],
+          "tasks": [
+            {"name": "نمذجة البيانات", "state": "done", "hours": 72},
+            {"name": "واجهات التكامل", "state": "doing", "hours": 95},
+            {"name": "اعتماد الأمان", "state": "blocked", "hours": 21}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "العمليات",
+      "owner": "مكتب التحسين",
+      "active": false,
+      "projects": [
+        {
+          "name": "أتمتة الإجراءات",
+          "url": "https://example.com/projects/automation",
+          "budget": 95000,
+          "status": "red",
+          "progress": [8, 17, 22, 24, 24],
+          "tasks": [
+            {"name": "توثيق المسارات", "state": "done", "hours": 38},
+            {"name": "معالجة الاستثناءات", "state": "blocked", "hours": 44}
+          ]
+        }
+      ]
+    }
+  ]
+}

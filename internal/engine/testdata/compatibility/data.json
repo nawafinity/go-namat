@@ -1,0 +1,10 @@
+{
+  "title": "LibreOffice compatibility",
+  "records": [
+    {
+      "name": "Alpha",
+      "value": "First",
+      "details": ["One", "Two"]
+    }
+  ]
+}

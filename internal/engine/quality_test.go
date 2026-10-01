@@ -13,20 +13,19 @@ import (
 )
 
 func TestCustomDelimitersAndSmartQuotes(t *testing.T) {
-	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>{# name == ‘Namat’ ? name : 'x' #}</w:t></w:r></w:p>`))})
+	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>{# name == ‘Namat’ #}</w:t></w:r></w:p>`))})
 	report, err := CreateReport(context.Background(), template, map[string]any{"name": "Namat"}, Options{OpenDelimiter: "{#", CloseDelimiter: "#}", FixSmartQuotes: true})
 	if err != nil {
 		t.Fatalf("CreateReport: %v", err)
 	}
-	if got := documentText(t, report); !strings.Contains(got, "Namat") {
+	if got := documentText(t, report); !strings.Contains(got, "true") {
 		t.Fatalf("unexpected text: %q", got)
 	}
 }
 
-func TestErrorHandlerAndRejectNullish(t *testing.T) {
+func TestErrorHandlerAndStrictNullish(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[missing.value]]</w:t></w:r></w:p>`))})
 	report, err := CreateReport(context.Background(), template, nil, Options{
-		RejectNullish: true,
 		ErrorHandler: func(command string, err error) (any, error) {
 			return "unavailable", nil
 		},
@@ -41,7 +40,7 @@ func TestErrorHandlerAndRejectNullish(t *testing.T) {
 
 func TestTypedNullishAndObjectErrors(t *testing.T) {
 	nullTemplate := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[value]]</w:t></w:r></w:p>`))})
-	_, err := CreateReport(context.Background(), nullTemplate, map[string]any{"value": nil}, Options{RejectNullish: true})
+	_, err := CreateReport(context.Background(), nullTemplate, map[string]any{"value": nil}, Options{})
 	if !errors.Is(err, ErrNullishResult) || !errors.Is(err, ErrCommandExecution) {
 		t.Fatalf("error = %v, want nullish and execution categories", err)
 	}
@@ -52,7 +51,7 @@ func TestTypedNullishAndObjectErrors(t *testing.T) {
 }
 
 func TestCollectValidationErrors(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[INS (]]</w:t></w:r></w:p><w:p><w:r><w:t>[[INS )]]</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[unknown()]]</w:t></w:r></w:p><w:p><w:r><w:t>[[#if active]]</w:t></w:r></w:p>`)
 	_, err := Compile(testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)}), Options{CollectErrors: true})
 	var multiple *MultiError
 	if !errors.As(err, &multiple) || len(multiple.Errors) != 2 {
@@ -62,14 +61,14 @@ func TestCollectValidationErrors(t *testing.T) {
 
 func TestNestedConditionsAndLoops(t *testing.T) {
 	document := wordDocument(`
-<w:p><w:r><w:t>[[FOR group IN groups]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[IF $group.visible]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[$group.name]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[FOR item IN $group.items]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[$item]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[END-FOR item]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[END-IF]]</w:t></w:r></w:p>
-<w:p><w:r><w:t>[[END-FOR group]]</w:t></w:r></w:p>`)
+<w:p><w:r><w:t>[[#each groups as group]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#if group.visible]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[group.name]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[#each group.items as item]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[item]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[/if]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	data := map[string]any{"groups": []any{
 		map[string]any{"visible": true, "name": "group-a", "items": []string{"1", "2"}},
@@ -86,7 +85,7 @@ func TestNestedConditionsAndLoops(t *testing.T) {
 }
 
 func TestAggregateIterationLimit(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[FOR item IN items]]</w:t></w:r></w:p><w:p><w:r><w:t>[[$item]]</w:t></w:r></w:p><w:p><w:r><w:t>[[END-FOR]]</w:t></w:r></w:p>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[#each items as item]]</w:t></w:r></w:p><w:p><w:r><w:t>[[item]]</w:t></w:r></w:p><w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p>`)
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)})
 	_, err := CreateReport(context.Background(), template, map[string]any{"items": []int{1, 2, 3}}, Options{MaxIterations: 2})
 	if err == nil || !strings.Contains(err.Error(), "maximum loop iterations") || !errors.Is(err, ErrSecurityLimit) {
@@ -109,7 +108,7 @@ func TestCancelledContextStopsRender(t *testing.T) {
 }
 
 func TestCompiledTemplateRendersConcurrently(t *testing.T) {
-	document := wordDocument(`<w:p><w:r><w:t>[[name]]</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>[[FOR item IN items]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[$item]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[END-FOR]]</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`)
+	document := wordDocument(`<w:p><w:r><w:t>[[name]]</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>[[#each items as item]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[item]]</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>[[/each]]</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`)
 	compiled, err := Compile(testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)}), Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -135,6 +134,56 @@ func TestCompiledTemplateRendersConcurrently(t *testing.T) {
 			}
 			if !bytes.Contains(pkg.Parts["word/document.xml"].Data, []byte(name)) {
 				errors <- fmt.Errorf("render %d contains another render's data", index)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errors)
+	for err := range errors {
+		t.Error(err)
+	}
+}
+
+func TestCompiledTemplateRichContentRendersConcurrently(t *testing.T) {
+	document := wordDocument(`
+<w:p><w:r><w:t>[[@image image]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[@link link]]</w:t></w:r></w:p>
+<w:p><w:r><w:t>[[@html html]]</w:t></w:r></w:p>`)
+	compiled, err := Compile(testDOCX(t, map[string][]byte{"word/document.xml": []byte(document)}), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const workers = 16
+	const rounds = 4
+	var wg sync.WaitGroup
+	errors := make(chan error, workers*rounds)
+	for worker := 0; worker < workers; worker++ {
+		worker := worker
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for round := 0; round < rounds; round++ {
+				token := fmt.Sprintf("worker-%d-round-%d", worker, round)
+				report, renderErr := compiled.Render(context.Background(), map[string]any{
+					"image": Image{Data: []byte(token), Extension: "png", Width: 1, Height: 1, Alt: token},
+					"link":  Link{URL: "https://example.test/" + token, Label: token},
+					"html":  "<p>" + token + "</p>",
+				})
+				if renderErr != nil {
+					errors <- renderErr
+					continue
+				}
+				pkg, packageErr := readPackage(report)
+				if packageErr != nil {
+					errors <- packageErr
+					continue
+				}
+				for _, partName := range []string{"word/media/namat-image-1.png", "word/namat-html-1.html", "word/_rels/document.xml.rels"} {
+					part, ok := pkg.Parts[partName]
+					if !ok || !bytes.Contains(part.Data, []byte(token)) {
+						errors <- fmt.Errorf("render %s does not contain its data in %s", token, partName)
+					}
+				}
 			}
 		}()
 	}
@@ -192,10 +241,10 @@ func TestTimeoutOption(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[slow()]]</w:t></w:r></w:p>`))})
 	_, err := CreateReport(context.Background(), template, nil, Options{
 		Timeout: 10 * time.Millisecond,
-		Functions: map[string]Function{"slow": func(args ...any) (any, error) {
+		Functions: map[string]FunctionSpec{"slow": testFunction(func(context.Context, ...any) (any, error) {
 			time.Sleep(100 * time.Millisecond)
 			return "done", nil
-		}},
+		})},
 	})
 	if err == nil {
 		t.Fatal("expected timeout")
@@ -233,10 +282,14 @@ func TestCreateReportReaderCommandsAndBuiltins(t *testing.T) {
 
 func TestCompileRejectsInvalidAssignment(t *testing.T) {
 	template := testDOCX(t, map[string][]byte{
-		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[EXEC invalid]]</w:t></w:r></w:p>`)),
+		"word/document.xml": []byte(wordDocument(`<w:p><w:r><w:t>[[#let invalid]]</w:t></w:r></w:p>`)),
 	})
 	_, err := Compile(template, Options{})
 	if err == nil || !errors.Is(err, ErrCommandSyntax) {
 		t.Fatalf("Compile error = %v, want command syntax error", err)
+	}
+	var templateErr *Error
+	if !errors.As(err, &templateErr) || templateErr.Paragraph != 1 || templateErr.CommandIndex != 1 || templateErr.End <= templateErr.Start {
+		t.Fatalf("compile location = %#v", templateErr)
 	}
 }

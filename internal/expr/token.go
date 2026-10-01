@@ -9,7 +9,6 @@ const (
 	tokenIdentifier
 	tokenNumber
 	tokenString
-	tokenTemplate
 	tokenLParen
 	tokenRParen
 	tokenLBracket
@@ -21,13 +20,14 @@ const (
 	tokenLBrace
 	tokenRBrace
 	tokenColon
-	tokenQuestion
+	tokenPipe
 )
 
 type token struct {
 	kind tokenKind
 	text string
 	pos  int
+	end  int
 }
 
 func (t token) String() string {

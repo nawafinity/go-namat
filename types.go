@@ -6,14 +6,45 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/nawafinity/go-namat/internal/value"
 )
 
-// Function is a host function exposed to template expressions.
-type Function func(args ...any) (any, error)
+// ValueType identifies a strict v1 expression type.
+type ValueType = value.Kind
 
-// QueryResolver resolves a QUERY command into the root data used by a render.
-// It runs once before document commands are evaluated.
-type QueryResolver func(ctx context.Context, query string) (any, error)
+const (
+	TypeAny     ValueType = value.Any
+	TypeMissing ValueType = value.Missing
+	TypeNull    ValueType = value.Null
+	TypeBool    ValueType = value.Bool
+	TypeString  ValueType = value.String
+	TypeInt     ValueType = value.Int
+	TypeUint    ValueType = value.Uint
+	TypeDecimal ValueType = value.Decimal
+	TypeFloat   ValueType = value.Float
+	TypeList    ValueType = value.List
+	TypeObject  ValueType = value.Object
+	TypeRich    ValueType = value.Rich
+)
+
+// Decimal is an exact base-10/rational number suitable for money and other
+// values that must not pass through float64.
+type Decimal = value.DecimalValue
+
+func ParseDecimal(source string) (Decimal, error) { return value.ParseDecimal(source) }
+
+const LanguageVersionV1 = "v1"
+
+// FunctionSpec describes a host function and its compile-time signature.
+type FunctionSpec struct {
+	Params      []ValueType
+	Variadic    bool
+	Returns     ValueType
+	Description string
+	Pure        bool
+	Call        func(context.Context, ...any) (any, error)
+}
 
 // ErrorHandler may replace the output of a failed value command. Returning a
 // non-nil error aborts rendering.
@@ -21,34 +52,36 @@ type ErrorHandler func(command string, err error) (replacement any, returnedErr 
 
 // Options controls compilation and rendering.
 type Options struct {
+	// LanguageVersion selects the template contract. Empty means "v1".
+	LanguageVersion string
 	// OpenDelimiter starts a template command. The default is "[[".
 	OpenDelimiter string
 	// CloseDelimiter ends a template command. The default is "]]".
 	CloseDelimiter string
-	// LiteralXMLDelimiter surrounds trusted OOXML fragments. The default is "||".
-	LiteralXMLDelimiter string
-	// Functions exposes explicitly registered Go functions to expressions.
-	Functions map[string]Function
-	// QueryResolver resolves the optional template-level QUERY command.
-	QueryResolver QueryResolver
+	// Functions exposes explicitly registered, typed Go functions.
+	Functions map[string]FunctionSpec
 	// ErrorHandler may recover from a failed value command.
 	ErrorHandler ErrorHandler
 	// CollectErrors returns independent compile errors together.
 	CollectErrors bool
-	// RejectNullish rejects nil insertion results instead of writing empty text.
-	RejectNullish bool
-	// AllowObjectResults permits maps and structs to be formatted as text.
-	AllowObjectResults bool
 	// FixSmartQuotes normalizes typographic quotes before parsing expressions.
 	FixSmartQuotes bool
 	// DisableLineBreaks leaves newline characters as text instead of Word breaks.
 	DisableLineBreaks bool
-	// AllowRawXML enables RAW-XML and literal XML delimiters for trusted input.
+	// AllowRawXML enables the explicit @raw-xml directive for trusted input.
 	AllowRawXML bool
 	// AllowedLinkSchemes is the allowlist used by LINK commands.
 	AllowedLinkSchemes []string
 	// MaxIterations limits aggregate loop iterations during one render.
 	MaxIterations int
+	// MaxExpressionBytes limits the source length of one expression.
+	MaxExpressionBytes int
+	// MaxExpressionTokens limits lexical complexity of one expression.
+	MaxExpressionTokens int
+	// MaxExpressionDepth limits parser and AST nesting.
+	MaxExpressionDepth int
+	// MaxEvaluationSteps limits aggregate expression work during one render.
+	MaxEvaluationSteps int
 	// MaxTemplateBytes limits the compressed input template size.
 	MaxTemplateBytes int64
 	// MaxPartBytes limits one uncompressed ZIP part.
@@ -69,36 +102,17 @@ type Options struct {
 type CommandType string
 
 const (
-	// CommandInsert inserts an expression result as text.
-	CommandInsert CommandType = "INS"
-	// CommandExec evaluates an assignment without visible output.
-	CommandExec CommandType = "EXEC"
-	// CommandSet is an explicit assignment command.
-	CommandSet CommandType = "SET"
-	// CommandIf starts a conditional block.
-	CommandIf CommandType = "IF"
-	// CommandElse separates conditional branches.
-	CommandElse CommandType = "ELSE"
-	// CommandEndIf ends a conditional block.
-	CommandEndIf CommandType = "END-IF"
-	// CommandFor starts a collection loop.
-	CommandFor CommandType = "FOR"
-	// CommandEndFor ends a collection loop.
-	CommandEndFor CommandType = "END-FOR"
-	// CommandImage inserts an inline drawing.
-	CommandImage CommandType = "IMAGE"
-	// CommandLink inserts an external hyperlink.
-	CommandLink CommandType = "LINK"
-	// CommandHTML inserts an HTML altChunk in the main document.
-	CommandHTML CommandType = "HTML"
-	// CommandRawXML inserts trusted OOXML when explicitly enabled.
-	CommandRawXML CommandType = "RAW-XML"
-	// CommandQuery asks the host application to resolve root data.
-	CommandQuery CommandType = "QUERY"
-	// CommandAlias defines a reusable command.
-	CommandAlias CommandType = "ALIAS"
-	// CommandAliasRef invokes a previously defined alias.
-	CommandAliasRef CommandType = "ALIAS-REF"
+	CommandInsert  CommandType = "insert"
+	CommandLet     CommandType = "let"
+	CommandIf      CommandType = "if"
+	CommandElse    CommandType = "else"
+	CommandEndIf   CommandType = "/if"
+	CommandEach    CommandType = "each"
+	CommandEndEach CommandType = "/each"
+	CommandImage   CommandType = "@image"
+	CommandLink    CommandType = "@link"
+	CommandHTML    CommandType = "@html"
+	CommandRawXML  CommandType = "@raw-xml"
 )
 
 // Command is a parsed command found in a template.
@@ -107,40 +121,48 @@ type Command struct {
 	Raw string
 	// Type identifies the parsed command kind.
 	Type CommandType
-	// Expression contains the command expression or query text.
+	// Expression contains the command expression.
 	Expression string
-	// Variable contains a loop variable or alias name when applicable.
+	// Variable contains a loop variable or lexical declaration name.
 	Variable string
+	Location CommandLocation
+}
+
+type CommandLocation struct {
+	Paragraph int
+	Ordinal   int
+	Start     int
+	End       int
 }
 
 // Image describes an inline image returned by an IMAGE expression.
 type Image struct {
 	// Data contains encoded PNG, JPEG, GIF, or SVG bytes.
-	Data []byte
+	Data []byte `json:"data"`
 	// Extension identifies the image format without requiring a leading dot.
-	Extension string
+	Extension string `json:"extension"`
 	// Width is the rendered width in centimeters.
-	Width float64
+	Width float64 `json:"width"`
 	// Height is the rendered height in centimeters.
-	Height float64
+	Height float64 `json:"height"`
 	// Alt is the accessibility description stored in drawing properties.
-	Alt string
+	Alt string `json:"alt"`
 	// Rotation is measured clockwise in degrees.
-	Rotation float64
+	Rotation float64 `json:"rotation"`
 	// Caption is optional text emitted below the inline image.
-	Caption string
+	Caption string `json:"caption"`
 	// Thumbnail is an optional raster fallback for an SVG image.
-	Thumbnail *Image
+	Thumbnail *Image `json:"thumbnail,omitempty"`
 }
 
 // Link describes an external hyperlink returned by a LINK expression.
 type Link struct {
 	// URL is an absolute external URL whose scheme must be allowed by Options.
-	URL string
+	URL string `json:"url"`
 	// Label is the visible link text; an empty label falls back to URL.
-	Label string
+	Label string `json:"label"`
 	// Tooltip is optional hover text stored in the hyperlink element.
-	Tooltip string
+	Tooltip string `json:"tooltip"`
 }
 
 // Metadata contains standard Word core and extended document properties.
@@ -188,17 +210,28 @@ var (
 
 // Error describes a template failure and the package part where it occurred.
 type Error struct {
-	Part    string
-	Command string
-	Err     error
+	Part         string
+	Paragraph    int
+	CommandIndex int
+	Start        int
+	End          int
+	Command      string
+	Err          error
 }
 
 func (e *Error) Error() string {
+	location := e.Part
+	if e.Paragraph > 0 {
+		location += fmt.Sprintf(": paragraph %d", e.Paragraph)
+	}
+	if e.CommandIndex > 0 {
+		location += fmt.Sprintf(": command %d", e.CommandIndex)
+	}
 	switch {
-	case e.Part != "" && e.Command != "":
-		return fmt.Sprintf("namat: %s: command %q: %v", e.Part, e.Command, e.Err)
-	case e.Part != "":
-		return fmt.Sprintf("namat: %s: %v", e.Part, e.Err)
+	case location != "" && e.Command != "":
+		return fmt.Sprintf("namat: %s: %q: %v", location, e.Command, e.Err)
+	case location != "":
+		return fmt.Sprintf("namat: %s: %v", location, e.Err)
 	default:
 		return fmt.Sprintf("namat: %v", e.Err)
 	}
